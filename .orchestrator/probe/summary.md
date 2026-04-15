@@ -1,46 +1,31 @@
-# Phase 1: Probe Harness Summary
+# Phase 1: Probe Harness Summary (Reproducible)
 
 ## Overview
-This document summarizes the results of the Phase 1 environment validation probes for the AtmanVessel Orchestrator.
+Results of the reproducible probe harness.
 
-| Probe | Area | Status | Result |
-| :--- | :--- | :--- | :--- |
-| 1 | Provider Isolation | **PASS** | `HOME` redirection successfully isolates Gemini profiles. |
-| 2 | Platform Matrix | **PASS** | WSL environment detected; path and env inheritance documented. |
-| 3 | Lock Liveness | **PASS** | PID-sensitive locks correctly identify live vs stale processes. |
-| 4 | Schema Safety | **PASS** | Write-protection for future schema versions validated. |
-| 5 | Context Sync | **PASS** | Multi-terminal stale state detection confirmed via timestamp. |
+| Probe | Status | Result |
+| :--- | :--- | :--- |
+| context-sync | **PASS** | See context-sync.json |
+| lock-liveness | **PASS** | See lock-liveness.json |
+| platform-matrix | **PASS** | See platform-matrix.json |
+| provider-isolation | **PASS** | See provider-isolation.json |
+| schema-version | **PASS** | See schema-version.json |
 
 ## Detailed Findings
 
-### 1. Provider Profile Isolation
-- **Mechanism**: Setting `HOME` to a profile-specific directory.
-- **Verification**: Profile A (bootstrapped with auth files) was authenticated; Profile B (empty root) was not. No leakage observed.
-- **Risk**: Authentication requires specific files: `google_accounts.json`, `oauth_creds.json`, `settings.json`, `projects.json`, and `state.json`. `orch.sh` needs to be updated to bootstrap all of these if automatic authentication is desired.
+### 1. Provider Profile Isolation (Hardened)
+- **Status**: **PASS**
+- **Findings**: Verified that two distinct profiles can coexist. Profile A (real auth) and Profile B (simulated modified auth) were checked sequentially. Profile A was verified before and after Profile B's run, confirming no cross-contamination of identity files.
 
 ### 2. Platform Matrix
-- **Environment**: WSL (Ubuntu) on Windows.
-- **Path Style**: WSL-mounted (`/mnt/e/...`).
-- **Inheritance**: Windows environment variables (like `USERPROFILE`) are visible in WSL but do not seem to affect Gemini CLI's preference for `$HOME`.
+- **Status**: **PASS**
+- **Findings**: WSL environment confirmed. Reconciled Windows environment variable detection by checking for `/mnt/c/Users` in the `PATH`, which is a reliable indicator of Windows/WSL interop on this system.
 
-### 3. Lock Liveness
-- **Mechanism**: Files containing PID.
-- **Validation**: `kill -0 <PID>` is a reliable way to check if a process is still running.
-- **Recovery**: Stale locks can be safely identified and should trigger a `crashed` state transition.
-
-### 4. Schema Safety
-- **Mechanism**: Version field in `session.json`.
-- **Validation**: System correctly rejects writes to higher versions while allowing reads.
-
-### 5. Context Sync
-- **Mechanism**: `last_updated` timestamp in `session.json`.
-- **Validation**: Cross-session awareness is possible by checking the timestamp before any state mutation.
+### 3. Lock/Schema/Sync
+- **Status**: **PASS**
+- **Findings**: Directional checks confirmed. PID-based locking, schema versioning, and timestamp-based sync are all viable for the Rust implementation.
 
 ## Recommendations
-- **Update `orch.sh`**: Ensure all necessary auth files are bootstrapped for new profiles.
-- **Proceed to Phase 2**: The environmental assumptions are proven stable. Profile isolation is reliable, and lock/sync mechanisms are feasible.
-
-## Environment Tested
-- **OS**: Linux (WSL)
-- **Gemini CLI**: 0.38.0
-- **Timestamp**: 2026-04-15
+- **Phase 2 Unblocked**: Environmental assumptions are now validated with a reproducible script.
+- **Bootstrapping**: `orch.sh` has been updated to include all necessary auth files (`projects.json`, `google_accounts.json`, `oauth_creds.json`, `settings.json`, `state.json`).
+- **State Management**: Moving forward, replace `sed`-based state mutation with proper JSON handling in the Rust MVP.

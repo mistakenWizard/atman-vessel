@@ -45,15 +45,17 @@ case "$COMMAND" in
     mkdir -p "$PROFILE_DIR/.gemini" "$PROFILE_DIR/.codex"
     
     # Bootstrap config from system HOME
+    # WARNING: This is an EXPERIMENTAL PROTOTYPE. Future versions will use structured state management.
     BASE_GEMINI="$HOME/.gemini"
-    if [ ! -f "$PROFILE_DIR/.gemini/projects.json" ] && [ -f "$BASE_GEMINI/projects.json" ]; then
-      cp "$BASE_GEMINI/projects.json" "$PROFILE_DIR/.gemini/"
-    fi
-    if [ ! -f "$PROFILE_DIR/.gemini/google_accounts.json" ] && [ -f "$BASE_GEMINI/google_accounts.json" ]; then
-      cp "$BASE_GEMINI/google_accounts.json" "$PROFILE_DIR/.gemini/"
-    fi
+    BOOTSTRAP_FILES=("projects.json" "google_accounts.json" "oauth_creds.json" "settings.json" "state.json")
+    
+    for file in "${BOOTSTRAP_FILES[@]}"; do
+        if [ ! -f "$PROFILE_DIR/.gemini/$file" ] && [ -f "$BASE_GEMINI/$file" ]; then
+            cp "$BASE_GEMINI/$file" "$PROFILE_DIR/.gemini/"
+        fi
+    done
 
-    # Update session state
+    # Update session state (DEPRECATED SED MUTATION - PHASE 1.5 ONLY)
     if [ -f "$SESSION_FILE" ]; then
         sed -i "s/\"active_profile\": \".*\"/\"active_profile\": \"$PROFILE_NAME\"/" "$SESSION_FILE"
     fi

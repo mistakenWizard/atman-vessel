@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-04-15T09:32:58Z",
+  "timestamp": "2026-04-15T14:08:39Z",
   "live_lock": {
-    "pid": 202061,
+    "pid": 206984,
     "detected_live": true
   },
   "stale_lock": {
