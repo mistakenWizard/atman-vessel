@@ -1,9 +1,20 @@
 # AtmanVessel Project Standards (Task-Centric)
 
+## Multi-Agent Coordination
+**CRITICAL:** This project is shared with other agents. You MUST use Task-Based Worktrees.
+
+### Execution Flow:
+1. **Claim Task**: Run `task start <slug>` in the root directory.
+2. **Switch Context**: `cd` to the task-specific directory (e.g., `E:\atman-vessel-task-xyz`).
+3. **Work**: Perform implementation and testing in the isolated worktree.
+4. **Pause/Handoff**: Write to `.agent/handoffs/<slug>.md` and run `task handoff <slug>`.
+
+---
+
 ## Core Mandate: Deterministic Continuity
 Every action taken in this repository must prioritize **Task Continuity** and **Context Integrity**.
 
-### Operational Flow:
+### Operational Standards:
 1. **State Persistence**: All task progress must be mirrored in `.orchestrator/session.json`.
 2. **Provenance**: Every update to the soul must include `source`, `session_id`, and `timestamp`.
 3. **Isolation**: Always use `orch.sh` for profile-level execution to ensure identity isolation.
