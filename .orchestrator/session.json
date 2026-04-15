@@ -1,0 +1,18 @@
+{
+  "project_id": "rust-algo",
+  "current_task": "",
+  "active_profile": "",
+  "context": {
+    "goals": [],
+    "verified_facts": [],
+    "blockers": [],
+    "files_in_focus": [],
+    "decisions": [],
+    "next_actions": []
+  },
+  "sessions": {
+    "codex-chief": { "provider": "codex", "role": "planning" },
+    "gemini-builder": { "provider": "gemini", "role": "implementation" },
+    "gemini-reviewer": { "provider": "gemini", "role": "review" }
+  }
+}
