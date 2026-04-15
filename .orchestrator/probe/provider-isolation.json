@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-04-15T09:31:41Z",
+  "profiles": {
+    "A": {
+      "path": "/tmp/gemini-profile-A.X3Ux5D",
+      "authenticated": true
+    },
+    "B": {
+      "path": "/tmp/gemini-profile-B.IFkFYu",
+      "authenticated": false
+    }
+  },
+  "leak_detected": false,
+  "status": "pass"
+}

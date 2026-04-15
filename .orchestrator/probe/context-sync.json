@@ -1,0 +1,7 @@
+{
+  "timestamp": "2026-04-15T09:34:01Z",
+  "session_a_ts": 1776245640,
+  "session_b_ts": 1776245641,
+  "stale_detected": true,
+  "status": "pass"
+}

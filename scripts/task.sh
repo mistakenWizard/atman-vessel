@@ -14,10 +14,10 @@ fi
 # Configuration
 BASE_DIR=$(pwd)
 # In Linux, we'll place worktrees in a sibling directory as well
-WORKTREE_ROOT_DIR=".."
-TASK_DIR="$WORKTREE_ROOT_DIR/rust-algo-task-$SLUG"
+WORKTREE_ROOT_DIR=".worktrees"
+TASK_DIR="$WORKTREE_ROOT_DIR/atman-vessel-task-$SLUG"
 BRANCH_NAME="task/$SLUG"
-CURRENT_BRANCH="release/integrated-trading-platform"
+CURRENT_BRANCH="master"
 
 update_board() {
     local status=$1
@@ -25,7 +25,7 @@ update_board() {
     local board_path="$BASE_DIR/.agent/BOARD.md"
     
     # Use sed to update the specific task line
-    # Format: | `slug` | Agent | Status | Path | Desc |
+    # Format: | `slug` | Agent | Status | Path |
     # We use a temporary file for safety
     sed -i "s/| \`$SLUG\` | .* | .* | .* |/| \`$SLUG\` | $agent | $status | ${TASK_DIR//\//\\/} |/g" "$board_path"
 }
@@ -39,13 +39,14 @@ case $ACTION in
             echo "Creating new worktree at $TASK_DIR from $CURRENT_BRANCH..."
             git worktree add -b "$BRANCH_NAME" "$TASK_DIR" "$CURRENT_BRANCH"
         fi
-        update_board "In Progress" "Agent-CLI"
+        update_board "In Progress" "Gemini-CLI"
         echo "✅ Task initialized. Please 'cd $TASK_DIR' to begin."
         ;;
         
     "handoff")
         echo "📦 Handing off task: $SLUG"
         HANDOFF_FILE="$BASE_DIR/.agent/handoffs/$SLUG.md"
+        mkdir -p "$BASE_DIR/.agent/handoffs"
         if [ ! -f "$HANDOFF_FILE" ]; then
             echo "Please fill in handoff details for $SLUG" > "$HANDOFF_FILE"
         fi

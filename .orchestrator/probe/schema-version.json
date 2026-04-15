@@ -1,0 +1,8 @@
+{
+  "timestamp": "2026-04-15T09:33:18Z",
+  "current_version": "1.0",
+  "write_current": true,
+  "reject_future_write": true,
+  "read_future_readonly": true,
+  "status": "pass"
+}

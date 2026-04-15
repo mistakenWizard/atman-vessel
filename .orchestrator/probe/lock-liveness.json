@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-04-15T09:32:58Z",
+  "live_lock": {
+    "pid": 202061,
+    "detected_live": true
+  },
+  "stale_lock": {
+    "pid": 999999,
+    "detected_stale": true
+  },
+  "status": "pass"
+}
