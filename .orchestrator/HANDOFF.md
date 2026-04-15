@@ -1,27 +1,28 @@
 # ORCHESTRATOR HANDOFF
 
 ## 1. Task Context
-**Current Goal**: Phase 1: Probe Harness (Environment Validation)
+**Current Goal**: Phase 1.5: Hardening & Reproducibility
 **Status**: **COMPLETED**
-**Files in Focus**: `.orchestrator/probe/*`, `scripts/probe-*.sh`
+**Files in Focus**: `scripts/probes/*`, `scripts/probe.sh`, `orch.sh`
 
 ## 2. Progress Log
-- [x] Verified: Provider Profile Isolation (HOME redirection works).
-- [x] Verified: Platform Matrix (WSL behavior documented).
-- [x] Verified: Lock Liveness (PID checking is reliable).
-- [x] Verified: Schema Safety (Version protection works).
-- [x] Verified: Context Sync (Multi-terminal stale detection works).
+- [x] Verified: Reproducible probe harness (`bash scripts/probe.sh`).
+- [x] Verified: Two-profile authenticated coexistence (no contamination).
+- [x] Verified: Platform Matrix (WSL detection logic hardened).
+- [x] Verified: `orch.sh` updated with full bootstrapping.
+- [x] Verified: Documentation of `sed` as experimental/temporary.
 
 ## 3. Profile Specific Directives
 ### 🛠️ For Builder (Gemini)
-- Update `orch.sh` to include `settings.json`, `oauth_creds.json`, and `state.json` in profile bootstrapping for automatic authentication.
-- Begin Phase 2: MVP Scaffolding (Rust implementation of the orchestrator core).
+- Proceed to Phase 2: MVP Scaffolding (Rust implementation).
+- Use `scripts/probe.sh` to re-validate environment after any major changes.
+- In Phase 2, implement a robust JSON state manager in Rust to replace `sed`.
 ### 🔍 For Auditor (Gemini)
-- Review the probe outputs in `.orchestrator/probe/` to ensure no sensitive data leaked.
-- Verify the `summary.md` for architectural compliance.
+- Review `scripts/probes/isolation.sh` for switching logic robustness.
+- Verify `summary.md` reflects the final hardened results.
 ### 🏗️ For Chief (Codex)
-- Oversee transition from Phase 1 to Phase 2.
+- Phase 1.5 successfully addressed all architectural gaps. Phase 2 is unblocked.
 
 ## 4. How to Resume
-1. Review `.orchestrator/probe/summary.md`.
-2. Proceed to Phase 2: MVP Scaffolding as defined in `.agent/workflows/orchestrator-master-spec.md`.
+1. Run `bash scripts/probe.sh` to see current environment validation.
+2. Review Phase 2 directive in `.agent/workflows/orchestrator-master-spec.md`.
