@@ -4,12 +4,13 @@
   "state_status": "running",
   "classification": "confidential",
   "active_profile": {
-    "value": "builder",
+    "value": "test_builder",
     "source": "user",
     "session_id": "1b1582c8-edd2-47ff-9692-f4e0b633a46c",
-    "timestamp": "2026-04-17T03:51:33.067205782Z",
+    "timestamp": "2026-04-17T06:16:29.537764269Z",
     "confidence": 1.0,
-    "status": "verified"
+    "status": "verified",
+    "signature": null
   },
   "current_task": null,
   "state": {
@@ -31,8 +32,16 @@
       "items": []
     }
   },
-  "last_updated": "2026-04-17T03:51:35.626610434Z",
+  "last_updated": "2026-04-17T06:16:29.537767253Z",
   "last_verified_at": null,
-  "profiles": {},
+  "profiles": {
+    "test_builder": {
+      "name": "test_builder",
+      "provider": "google",
+      "root": "/mnt/e/atman-vessel/.worktrees/atman-vessel-task-phase-5-global-layer/src-rust/.orchestrator/profiles/test_builder",
+      "role": null,
+      "default_classification": "internal"
+    }
+  },
   "metadata": {}
 }
