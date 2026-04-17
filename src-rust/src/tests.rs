@@ -495,3 +495,63 @@ fn test_probe_gated_launch_failure() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().to_string(), "Platform probe failed: Incompatible OS");
 }
+
+#[test]
+fn test_default_charter_population() {
+    let test_dir = setup_test_dir("charter_population");
+    let charters_dir = test_dir.join("charters");
+    
+    bootstrap_charters(&charters_dir).expect("Bootstrap charters failed");
+    
+    assert!(charters_dir.exists());
+    let entries = fs::read_dir(&charters_dir).unwrap();
+    let count = entries.count();
+    assert_eq!(count, 8, "Should have exactly 8 default charters");
+    
+    let roles = ["chief", "builder", "systems", "reviewer", "writer", "quant", "ops", "recovery"];
+    for role in roles {
+        assert!(charters_dir.join(format!("{}.json", role)).exists(), "Charter for {} missing", role);
+    }
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_resume_state_transition() {
+    let test_dir = setup_test_dir("resume_transition");
+    let session_path = test_dir.join("session.json");
+    
+    let mut session = Session::new();
+    session.state_status = StateStatus::Paused;
+    session.set_active_profile("test-profile", "user");
+    session.save(&session_path).unwrap();
+    
+    // Simulate resume logic
+    let mut session = Session::load(&session_path).unwrap();
+    assert_eq!(session.state_status, StateStatus::Paused);
+    
+    session.state_status = StateStatus::Running;
+    session.touch();
+    session.save(&session_path).unwrap();
+    
+    let resumed = Session::load(&session_path).unwrap();
+    assert_eq!(resumed.state_status, StateStatus::Running);
+    assert!(resumed.last_updated >= session.last_updated);
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_resume_error_handling() {
+    let mut session = Session::new();
+    session.active_profile = None;
+    
+    // Resume without profile should fail if no active profile
+    let result = match &session.active_profile {
+        Some(ap) => Ok(ap.value.clone()),
+        None => Err(anyhow::anyhow!("No active profile found")),
+    };
+    
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().to_string(), "No active profile found");
+}

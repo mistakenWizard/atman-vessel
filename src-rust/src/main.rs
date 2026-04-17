@@ -73,7 +73,17 @@ enum Commands {
         subcommand: GovernanceCommands,
     },
     /// Initialize orchestrator environment
-    Init,
+    Init {
+        /// Initialize global system directory
+        #[arg(long)]
+        global: bool,
+    },
+    /// Resume a paused session
+    Resume {
+        /// Profile to resume
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
     /// Show current session status
     Status,
     /// Manage profiles
@@ -802,6 +812,39 @@ pub fn check_approval(approved_by_flag: bool, message: &str) -> Result<()> {
     }
 }
 
+pub fn bootstrap_charters(charters_dir: &Path) -> Result<()> {
+    if !charters_dir.exists() {
+        fs::create_dir_all(charters_dir)?;
+    }
+
+    let roles = [
+        ("chief", "Planning, dispatching, and integration"),
+        ("builder", "Implementation and refactoring"),
+        ("systems", "Environment, tooling, and setup"),
+        ("reviewer", "Code review and regression spotting"),
+        ("writer", "Documentation and drafting"),
+        ("quant", "Trading research and backtesting"),
+        ("ops", "Agent system maintenance"),
+        ("recovery", "Stuck/crashed session triage"),
+    ];
+
+    for (name, role) in roles {
+        let charter_path = charters_dir.join(format!("{}.json", name));
+        if !charter_path.exists() {
+            let charter = Charter {
+                name: name.to_string(),
+                primary_role: role.to_string(),
+                secondary_capabilities: Vec::new(),
+                constraints: Vec::new(),
+            };
+            let content = serde_json::to_string_pretty(&charter)?;
+            fs::write(charter_path, content)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -1063,11 +1106,46 @@ fn main() -> Result<()> {
             println!("🖋️ Signing session: {} (Stub - cryptographic readiness)", id);
             println!("Provenance signature field ready for integration.");
         }
-        Commands::Init => {
+        Commands::Init { global } => {
             println!("🏗️ Initializing orchestrator...");
             let worktree = std::env::current_dir()?;
             Session::init(&worktree)?;
+            
+            if global {
+                let global_path = get_global_system_path()?;
+                let charters_dir = global_path.join("charters");
+                println!("🌐 Bootstrapping global charters in {:?}", charters_dir);
+                bootstrap_charters(&charters_dir)?;
+            }
             println!("Done.");
+        }
+        Commands::Resume { profile } => {
+            println!("⏯️ Resuming session...");
+            let mut session = Session::load(session_path)?;
+            
+            let profile_name = match profile {
+                Some(p) => p,
+                None => {
+                    match &session.active_profile {
+                        Some(ap) => ap.value.clone(),
+                        None => anyhow::bail!("No active profile found. Use `launch --profile <name>` to start a session or specify `--profile` with resume."),
+                    }
+                }
+            };
+
+            // In a real implementation, we'd verify lock status here
+            session.set_active_profile(&profile_name, "resume");
+            session.state_status = StateStatus::Running;
+            session.touch();
+            session.save(session_path)?;
+            
+            // Regenerate HANDOFF.md
+            let wt = std::env::current_dir()?;
+            let handoff_path = wt.join(".orchestrator/HANDOFF.md");
+            fs::write(&handoff_path, session.generate_handoff())?;
+            println!("Handoff regenerated at {:?}", handoff_path);
+            
+            println!("Session resumed with profile: {}", profile_name);
         }
         Commands::Status => {
             let session = Session::load(session_path)?;
