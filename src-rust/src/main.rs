@@ -232,6 +232,8 @@ pub struct Session {
     pub current_task: Option<Provenance<String>>,
     pub state: SessionState,
     pub last_updated: DateTime<Utc>,
+    #[serde(skip)]
+    pub loaded_at: DateTime<Utc>,
     pub last_verified_at: Option<DateTime<Utc>>,
     pub profiles: HashMap<String, Profile>,
     pub metadata: HashMap<String, String>,
@@ -255,6 +257,7 @@ impl Session {
                 next_actions: MergeableList::new(),
             },
             last_updated: Utc::now(),
+            loaded_at: Utc::now(),
             last_verified_at: None,
             profiles: HashMap::new(),
             metadata: HashMap::new(),
@@ -265,13 +268,23 @@ impl Session {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read session file at {:?}", path))?;
-        let session: Session = serde_json::from_str(&content)
+        let mut session: Session = serde_json::from_str(&content)
             .with_context(|| "Failed to parse session JSON")?;
+        session.loaded_at = Utc::now();
         Ok(session)
     }
 
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        if let Some(parent) = path.as_ref().parent() {
+        let path = path.as_ref();
+        if path.exists() {
+            let metadata = fs::metadata(path)?;
+            let last_modified: DateTime<Utc> = metadata.modified()?.into();
+            if last_modified > self.loaded_at {
+                anyhow::bail!("State on disk is newer than loaded session ({} > {})", last_modified, self.loaded_at);
+            }
+        }
+
+        if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self)?;
@@ -331,10 +344,51 @@ impl Session {
         }
         handoff
     }
+
+    pub fn generate_recovery(&self) -> String {
+        let mut recovery = String::new();
+        recovery.push_str("# CRITICAL RECOVERY\n\n");
+        recovery.push_str("## Session Information\n");
+        recovery.push_str(&format!("**Session ID**: {}\n", self.session_id));
+        recovery.push_str(&format!("**Last Updated**: {}\n", self.last_updated.to_rfc3339()));
+        recovery.push_str(&format!("**Status**: {:?}\n", self.state_status));
+        recovery.push_str(&format!("**Classification**: {:?}\n", self.classification));
+        
+        recovery.push_str("\n## Recovery Instructions\n");
+        recovery.push_str("1. Verify the integrity of the state files.\n");
+        recovery.push_str("2. Check for any partial writes or corrupted JSON.\n");
+        recovery.push_str(&format!("3. Run `orch takeover --profile {}` if locks are stale.\n", 
+            self.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("unknown")));
+        
+        recovery
+    }
+
+    pub fn takeover_lock(&mut self, worktree: &Path, profile: &str, force: bool) -> Result<()> {
+        let lock_dir = worktree.join(".orchestrator/locks");
+        let lock_name = format!("{}.json", profile);
+        let lock_path = lock_dir.join(lock_name);
+        
+        if lock_path.exists() {
+            let existing = Lock::load(&lock_path)?;
+            if existing.is_live() && !force {
+                anyhow::bail!("Cannot takeover live lock for profile {} (PID: {}) without force", profile, existing.pid);
+            }
+        }
+
+        let lock = Lock::new(worktree.to_path_buf(), &self.session_id, profile);
+        lock.save(lock_path)?;
+        self.state_status = StateStatus::Takeover;
+        self.touch();
+        Ok(())
+    }
 }
+
+#[cfg(test)]
+mod tests;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
     let session_path = Path::new(".orchestrator/session.json");
 
     match cli.command {
@@ -393,6 +447,20 @@ fn main() -> Result<()> {
                     println!("  Session ID: {}", session.session_id);
                 }
             }
+        }
+        Commands::Takeover { profile } => {
+            println!("🔄 Taking over profile: {}", profile);
+            let mut session = if session_path.exists() {
+                Session::load(session_path)?
+            } else {
+                Session::new()
+            };
+
+            let worktree = std::env::current_dir()?;
+            session.takeover_lock(&worktree, &profile, false)?;
+            session.set_active_profile(&profile, "takeover");
+            session.save(session_path)?;
+            println!("Takeover successful.");
         }
         _ => {
             println!("Command not yet implemented in MVP core.");
