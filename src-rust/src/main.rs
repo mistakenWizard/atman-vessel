@@ -53,6 +53,70 @@ impl<T> Provenance<T> {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Lock {
+    pub worktree_path: PathBuf,
+    pub session_id: String,
+    pub profile: String,
+    pub pid: u32,
+    pub acquired_at: DateTime<Utc>,
+}
+
+impl Lock {
+    pub fn new(worktree_path: PathBuf, session_id: &str, profile: &str) -> Self {
+        Self {
+            worktree_path,
+            session_id: session_id.to_string(),
+            profile: profile.to_string(),
+            pid: std::process::id(),
+            acquired_at: Utc::now(),
+        }
+    }
+
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        if let Some(parent) = path.as_ref().parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let content = fs::read_to_string(path)?;
+        let lock: Lock = serde_json::from_str(&content)?;
+        Ok(lock)
+    }
+
+    pub fn is_live(&self) -> bool {
+        #[cfg(unix)]
+        {
+            use libc::{kill, ESRCH};
+            unsafe {
+                let res = kill(self.pid as i32, 0);
+                res == 0 || std::io::Error::last_os_error().raw_os_error() != Some(ESRCH)
+            }
+        }
+        #[cfg(windows)]
+        {
+            // Simple check if process exists on Windows
+            use std::process::Command;
+            let output = Command::new("tasklist")
+                .arg("/FI")
+                .arg(format!("PID eq {}", self.pid))
+                .arg("/NH")
+                .output();
+            
+            if let Ok(out) = output {
+                let s = String::from_utf8_lossy(&out.stdout);
+                s.contains(&self.pid.to_string())
+            } else {
+                true // Fallback to safe side
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Profile {
     pub name: String,
     pub provider: String, // "gemini" | "codex"
@@ -179,6 +243,24 @@ impl Session {
         self.touch();
     }
 
+    pub fn acquire_lock(&mut self, worktree: PathBuf, profile: &str) -> Result<Lock> {
+        let lock_dir = Path::new(".orchestrator/locks");
+        let lock_name = format!("{}.json", profile);
+        let lock_path = lock_dir.join(lock_name);
+        
+        if lock_path.exists() {
+            let existing = Lock::load(&lock_path)?;
+            if existing.is_live() && existing.session_id != self.session_id {
+                anyhow::bail!("Worktree already locked by session {} (profile {})", existing.session_id, existing.profile);
+            }
+            println!("Replacing stale or same-session lock.");
+        }
+
+        let lock = Lock::new(worktree, &self.session_id, profile);
+        lock.save(lock_path)?;
+        Ok(lock)
+    }
+
     pub fn generate_handoff(&self) -> String {
         let mut handoff = String::new();
         handoff.push_str("# ORCHESTRATOR HANDOFF\n\n");
@@ -212,15 +294,19 @@ fn main() -> Result<()> {
         println!("Initializing new session...");
         let mut s = Session::new();
         s.set_active_profile("chief", "system");
-        s.set_task("Phase 2: State Core Implementation", "user");
+        s.set_task("Phase 3: Worktree Safety Implementation", "user");
         s.add_fact("Environment assumptions validated via probes", "chief", ProvenanceStatus::Verified);
         s.add_fact("Rust core scaffolding complete", "builder", ProvenanceStatus::Verified);
+        s.add_fact("Provenance-aware State Core complete", "builder", ProvenanceStatus::Verified);
         s
     };
 
     println!("Session ID: {}", session.session_id);
-    println!("State Status: {:?}", session.state_status);
     
+    println!("Attempting to acquire lock for profile 'builder'...");
+    let lock = session.acquire_lock(std::env::current_dir()?, "builder")?;
+    println!("Lock acquired: {:?}", lock);
+
     session.touch();
     session.save(session_path)?;
     
