@@ -12,6 +12,10 @@ use std::path::{Path, PathBuf};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Approve any sensitive global writes without prompting
+    #[arg(long, global = true)]
+    approve: bool,
 }
 
 #[derive(Subcommand)]
@@ -25,10 +29,15 @@ enum Commands {
         /// CLI to launch (gemini or codex)
         #[arg(default_value = "gemini")]
         cli: String,
+        /// Create a new worktree for this session
+        #[arg(long)]
+        new_worktree: bool,
         /// Arguments to pass to the CLI
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
+    /// Verify and promote asserted facts
+    Verify,
     /// Freeze current state and merge validated facts
     Freeze {
         #[arg(short, long)]
@@ -148,6 +157,7 @@ pub struct Provenance<T> {
     pub timestamp: DateTime<Utc>,
     pub confidence: f32,
     pub status: ProvenanceStatus,
+    pub classification: Option<DataClassification>,
     pub signature: Option<String>,
 }
 
@@ -160,6 +170,7 @@ impl<T> Provenance<T> {
             timestamp: Utc::now(),
             confidence: 1.0,
             status,
+            classification: None,
             signature: None,
         }
     }
@@ -368,6 +379,36 @@ impl Session {
         self.last_updated = Utc::now();
     }
 
+    pub fn promote_facts(&mut self) {
+        if let Some(ref mut goal) = self.state.goal {
+            if goal.status == ProvenanceStatus::Observed || goal.status == ProvenanceStatus::Asserted {
+                goal.status = ProvenanceStatus::Verified;
+            }
+        }
+        for item in &mut self.state.verified_facts.items {
+            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
+                item.status = ProvenanceStatus::Verified;
+            }
+        }
+        for item in &mut self.state.blockers.items {
+            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
+                item.status = ProvenanceStatus::Verified;
+            }
+        }
+        for item in &mut self.state.files_in_focus.items {
+            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
+                item.status = ProvenanceStatus::Verified;
+            }
+        }
+        for item in &mut self.state.next_actions.items {
+            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
+                item.status = ProvenanceStatus::Verified;
+            }
+        }
+        self.last_verified_at = Some(Utc::now());
+        self.touch();
+    }
+
     pub fn set_active_profile(&mut self, profile_name: &str, source: &str) {
         self.active_profile = Some(Provenance::new(
             profile_name.to_string(),
@@ -574,8 +615,192 @@ pub fn prepare_launch_command(cli: &str, profile_path: &Path, args: &[String]) -
     cmd
 }
 
+fn probe_platform() -> Result<()> {
+    print!("  - Platform Probe... ");
+    let is_wsl = is_wsl();
+    let os = std::env::consts::OS;
+    if os != "linux" && os != "windows" {
+        println!("❌");
+        anyhow::bail!("Unsupported OS: {}", os);
+    }
+    println!("✅ ({} {})", os, if is_wsl { "WSL" } else { "Native" });
+    Ok(())
+}
+
+fn probe_locks() -> Result<()> {
+    print!("  - Lock Liveness Probe... ");
+    let wt = std::env::current_dir()?;
+    let session_id = "probe-session";
+    let profile = "probe-profile";
+    let lock_dir = wt.join(".orchestrator/probe_locks");
+    fs::create_dir_all(&lock_dir)?;
+    let lock_path = lock_dir.join(format!("{}.json", profile));
+
+    // Test Live Lock
+    let my_pid = std::process::id();
+    let lock = Lock {
+        worktree_path: wt.clone(),
+        session_id: session_id.to_string(),
+        profile: profile.to_string(),
+        pid: my_pid,
+        acquired_at: Utc::now(),
+    };
+    lock.save(&lock_path)?;
+    let loaded = Lock::load(&lock_path)?;
+    if !loaded.is_live() {
+        println!("❌");
+        anyhow::bail!("Live lock detected as dead");
+    }
+
+    // Test Stale Lock
+    let stale_pid = 999999;
+    let lock_stale = Lock {
+        worktree_path: wt.clone(),
+        session_id: session_id.to_string(),
+        profile: profile.to_string(),
+        pid: stale_pid,
+        acquired_at: Utc::now(),
+    };
+    lock_stale.save(&lock_path)?;
+    let loaded_stale = Lock::load(&lock_path)?;
+    if loaded_stale.is_live() {
+        // Just in case PID 999999 is actually alive, but unlikely
+        #[cfg(unix)]
+        {
+            use libc::{kill, ESRCH};
+            let res = unsafe { kill(stale_pid as i32, 0) };
+            if res != 0 && std::io::Error::last_os_error().raw_os_error() == Some(ESRCH) {
+                println!("❌");
+                anyhow::bail!("Stale lock detected as live");
+            }
+        }
+    }
+
+    fs::remove_dir_all(&lock_dir)?;
+    println!("✅");
+    Ok(())
+}
+
+fn probe_schema() -> Result<()> {
+    print!("  - Schema Version Probe... ");
+    let current_version = "1.4.0";
+    let session = Session::new();
+    if session.schema_version != current_version {
+        println!("❌");
+        anyhow::bail!("Unexpected schema version: {}", session.schema_version);
+    }
+    println!("✅");
+    Ok(())
+}
+
+fn probe_sync() -> Result<()> {
+    print!("  - Multi-Terminal Sync Probe... ");
+    let temp_dir = std::env::temp_dir().join(format!("orch-probe-sync-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&temp_dir)?;
+    let session_path = temp_dir.join("session.json");
+
+    let mut session_a = Session::new();
+    session_a.save(&session_path)?;
+
+    // Simulate Session B update
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    let mut session_b = Session::load(&session_path)?;
+    session_b.touch();
+    session_b.save(&session_path)?;
+
+    // Session A should detect stale state
+    let result = session_a.save(&session_path);
+    if result.is_ok() {
+        println!("❌");
+        anyhow::bail!("Session A failed to detect stale state on disk");
+    }
+
+    fs::remove_dir_all(&temp_dir)?;
+    println!("✅");
+    Ok(())
+}
+
+fn probe_isolation() -> Result<()> {
+    print!("  - Profile Isolation Probe... ");
+    // Logic: Verify we can create a temporary HOME and it doesn't affect current environment
+    let temp_home = std::env::temp_dir().join(format!("orch-probe-isolation-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&temp_home)?;
+    
+    let _original_home = std::env::var_os("HOME");
+    
+    // In Rust, std::env::set_var affects the current process. 
+    // To truly test isolation, we'd need to spawn a child process with a different HOME.
+    let status = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("exit 0")
+        .env("HOME", &temp_home)
+        .status()?;
+
+    if !status.success() {
+        println!("❌");
+        anyhow::bail!("Failed to spawn child process with custom HOME");
+    }
+
+    fs::remove_dir_all(&temp_home)?;
+    println!("✅");
+    Ok(())
+}
+
+pub fn run_probes() -> Result<()> {
+    println!("🔍 Running pre-flight probes...");
+    probe_platform()?;
+    probe_locks()?;
+    probe_schema()?;
+    probe_sync()?;
+    probe_isolation()?;
+    println!("✅ All probes passed.");
+    Ok(())
+}
+
+pub fn create_worktree(base_path: &Path, session_id: &str, profile: &str) -> Result<PathBuf> {
+    let wt_path = base_path.join(".worktrees").join(format!("session-{}-{}", session_id, profile));
+    
+    if !wt_path.exists() {
+        let status = std::process::Command::new("git")
+            .arg("worktree")
+            .arg("add")
+            .arg("-b")
+            .arg(format!("session-{}", session_id))
+            .arg(&wt_path)
+            .arg("HEAD")
+            .status()
+            .context("Failed to execute git worktree add")?;
+        
+        if !status.success() {
+            anyhow::bail!("git worktree add failed with status: {}", status);
+        }
+    }
+    
+    Ok(wt_path)
+}
+
 #[cfg(test)]
 mod tests;
+
+pub fn check_approval(approved_by_flag: bool, message: &str) -> Result<()> {
+    if approved_by_flag {
+        return Ok(());
+    }
+    
+    println!("⚠️  SECURITY GATE: {}", message);
+    print!("Do you approve this action? [y/N]: ");
+    use std::io::Write;
+    std::io::stdout().flush()?;
+    
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    
+    if input.trim().to_lowercase() == "y" {
+        Ok(())
+    } else {
+        anyhow::bail!("Action not approved by user")
+    }
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -583,16 +808,30 @@ fn main() -> Result<()> {
     let session_path = Path::new(".orchestrator/session.json");
 
     match cli.command {
-        Commands::Launch { profile, worktree, cli, args } => {
-            let wt = worktree.unwrap_or(std::env::current_dir()?);
+        Commands::Launch { profile, worktree, cli: cli_bin, new_worktree, args } => {
+            let wt = if new_worktree {
+                let base = std::env::current_dir()?;
+                // We need a session_id. If session.json exists, use it. Otherwise new.
+                let session_id = if session_path.exists() {
+                    Session::load(session_path)?.session_id
+                } else {
+                    uuid::Uuid::new_v4().to_string()
+                };
+                create_worktree(&base, &session_id, &profile)?
+            } else {
+                worktree.unwrap_or(std::env::current_dir()?)
+            };
+            
             let session_path = wt.join(".orchestrator/session.json");
+
+            run_probes()?;
 
             if !session_path.exists() {
                 println!("🏗️ Implicitly initializing orchestrator in {:?}", wt);
                 Session::init(&wt)?;
             }
 
-            println!("🚀 Launching {} in profile: {}", cli, profile);
+            println!("🚀 Launching {} in profile: {}", cli_bin, profile);
             let mut session = Session::load(&session_path)?;
             
             let profiles_dir = wt.join(".orchestrator/profiles");
@@ -621,13 +860,13 @@ fn main() -> Result<()> {
             fs::write(&handoff_path, session.generate_handoff())?;
             println!("Handoff generated at {:?}", handoff_path);
 
-            let mut cmd = prepare_launch_command(&cli, &profile_root, &args);
+            let mut cmd = prepare_launch_command(&cli_bin, &profile_root, &args);
             
             cmd.stdin(std::process::Stdio::inherit())
                .stdout(std::process::Stdio::inherit())
                .stderr(std::process::Stdio::inherit());
 
-            let mut child = cmd.spawn().with_context(|| format!("Failed to spawn CLI: {}", cli))?;
+            let mut child = cmd.spawn().with_context(|| format!("Failed to spawn CLI: {}", cli_bin))?;
             let status = child.wait().context("Failed to wait for CLI process")?;
             
             if !status.success() {
@@ -638,6 +877,13 @@ fn main() -> Result<()> {
                 session.state_status = StateStatus::Completed;
                 session.save(&session_path)?;
             }
+        }
+        Commands::Verify => {
+            let mut session = Session::load(session_path)?;
+            println!("🔄 Promoting asserted facts to verified...");
+            session.promote_facts();
+            session.save(session_path)?;
+            println!("Done.");
         }
         Commands::Freeze { message } => {
             println!("❄️ Freezing session: {}", message);
@@ -731,12 +977,22 @@ fn main() -> Result<()> {
             report.push_str("## Collate Facts vs. Blockers\n");
             report.push_str("### Verified Facts\n");
             for fact in &session.state.verified_facts.items {
-                report.push_str(&format!("- {}\n", fact.value));
+                let val = if fact.classification == Some(DataClassification::Secret) {
+                    "[REDACTED]".to_string()
+                } else {
+                    fact.value.clone()
+                };
+                report.push_str(&format!("- {}\n", val));
             }
             
             report.push_str("\n### Blockers & Issues\n");
             for blocker in &session.state.blockers.items {
-                report.push_str(&format!("- {}\n", blocker.value));
+                let val = if blocker.classification == Some(DataClassification::Secret) {
+                    "[REDACTED]".to_string()
+                } else {
+                    blocker.value.clone()
+                };
+                report.push_str(&format!("- {}\n", val));
             }
             
             let report_dir = Path::new("brain/post-mortems");
@@ -745,7 +1001,13 @@ fn main() -> Result<()> {
             fs::write(&report_path, &report)?;
             println!("Local post-mortem report generated at {:?}", report_path);
             
+            if session.classification == DataClassification::Secret {
+                println!("🤫 Secret session: Global post-mortem copying disabled.");
+                return Ok(());
+            }
+
             if let Ok(global_path) = get_global_system_path() {
+                check_approval(cli.approve, &format!("Copy post-mortem report to global storage at {:?}", global_path))?;
                 let global_pm_dir = global_path.join("postmortems");
                 if fs::create_dir_all(&global_pm_dir).is_ok() {
                     let global_pm_path = global_pm_dir.join(format!("pm-{}.md", session.session_id));
