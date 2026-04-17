@@ -42,6 +42,35 @@ enum Commands {
     },
     /// Generate a post-mortem report
     Postmortem,
+    /// Manage data governance and classification
+    Governance {
+        #[command(subcommand)]
+        subcommand: GovernanceCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum GovernanceCommands {
+    /// Set data classification for the current session
+    SetClass {
+        #[arg(short, long)]
+        level: String,
+    },
+    /// Status of current governance settings
+    Status,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DataClassification {
+    Public,
+    Internal,
+    Confidential,
+    Secret,
+    Personal,
+    LegalDraft,
+    TradingResearch,
+    SystemInternal,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -160,6 +189,7 @@ pub struct Profile {
     pub provider: String,
     pub root: PathBuf,
     pub role: Option<String>,
+    pub default_classification: DataClassification,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -197,6 +227,7 @@ pub struct Session {
     pub schema_version: String,
     pub session_id: String,
     pub state_status: StateStatus,
+    pub classification: DataClassification,
     pub active_profile: Option<Provenance<String>>,
     pub current_task: Option<Provenance<String>>,
     pub state: SessionState,
@@ -213,6 +244,7 @@ impl Session {
             schema_version: "1.4.0".to_string(),
             session_id,
             state_status: StateStatus::Planned,
+            classification: DataClassification::Internal,
             active_profile: None,
             current_task: None,
             state: SessionState {
@@ -284,6 +316,7 @@ impl Session {
         handoff.push_str("## 1. Task Context\n");
         handoff.push_str(&format!("**Current Goal**: {}\n", self.current_task.as_ref().map(|p| p.value.as_str()).unwrap_or("None")));
         handoff.push_str(&format!("**Status**: {:?}\n", self.state_status));
+        handoff.push_str(&format!("**Classification**: {:?}\n", self.classification));
         handoff.push_str(&format!("**Session ID**: {}\n", self.session_id));
         handoff.push_str(&format!("**Active Profile**: {}\n", self.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("None")));
         
@@ -336,6 +369,30 @@ fn main() -> Result<()> {
             session.touch();
             session.save(session_path)?;
             println!("Session frozen and saved.");
+        }
+        Commands::Governance { subcommand } => {
+            match subcommand {
+                GovernanceCommands::SetClass { level } => {
+                    let mut session = Session::load(session_path)?;
+                    let class = match level.to_lowercase().as_str() {
+                        "public" => DataClassification::Public,
+                        "internal" => DataClassification::Internal,
+                        "confidential" => DataClassification::Confidential,
+                        "secret" => DataClassification::Secret,
+                        _ => anyhow::bail!("Unknown classification level: {}", level),
+                    };
+                    session.classification = class;
+                    session.touch();
+                    session.save(session_path)?;
+                    println!("Data classification set to: {:?}", session.classification);
+                }
+                GovernanceCommands::Status => {
+                    let session = Session::load(session_path)?;
+                    println!("Current Governance Status:");
+                    println!("  Classification: {:?}", session.classification);
+                    println!("  Session ID: {}", session.session_id);
+                }
+            }
         }
         _ => {
             println!("Command not yet implemented in MVP core.");
