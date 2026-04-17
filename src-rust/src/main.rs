@@ -48,10 +48,30 @@ enum Commands {
     },
     /// Generate a post-mortem report
     Postmortem,
+    /// Manage agent charters
+    Charter {
+        #[command(subcommand)]
+        subcommand: CharterCommands,
+    },
+    /// Sign a session for cryptographic provenance
+    Sign {
+        #[arg(short, long)]
+        session: Option<String>,
+    },
     /// Manage data governance and classification
     Governance {
         #[command(subcommand)]
         subcommand: GovernanceCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum CharterCommands {
+    /// List all available agent charters
+    List,
+    /// Show details of a specific agent charter
+    Show {
+        name: String,
     },
 }
 
@@ -111,6 +131,7 @@ pub struct Provenance<T> {
     pub timestamp: DateTime<Utc>,
     pub confidence: f32,
     pub status: ProvenanceStatus,
+    pub signature: Option<String>,
 }
 
 impl<T> Provenance<T> {
@@ -122,8 +143,22 @@ impl<T> Provenance<T> {
             timestamp: Utc::now(),
             confidence: 1.0,
             status,
+            signature: None,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct Charter {
+    pub name: String,
+    pub primary_role: String,
+    pub secondary_capabilities: Vec<String>,
+    pub constraints: Vec<String>,
+}
+
+pub fn get_global_system_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().context("Could not find home directory")?;
+    Ok(home.join(".orchestrator").join("system"))
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -280,7 +315,7 @@ impl Session {
         Ok(session)
     }
 
-    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let path = path.as_ref();
         if path.exists() {
             let metadata = fs::metadata(path)?;
@@ -295,6 +330,7 @@ impl Session {
         }
         let content = serde_json::to_string_pretty(self)?;
         fs::write(path, content)?;
+        self.loaded_at = Utc::now();
         Ok(())
     }
 
@@ -570,8 +606,87 @@ fn main() -> Result<()> {
             fs::write(recovery_path, session.generate_recovery())?;
             println!("Recovery report generated at {:?}", recovery_path);
         }
-        _ => {
-            println!("Command not yet implemented in MVP core.");
+        Commands::Postmortem => {
+            println!("📝 Generating post-mortem report...");
+            let session = Session::load(session_path)?;
+            
+            let mut report = String::new();
+            report.push_str("# Post-Mortem Analysis\n\n");
+            report.push_str(&format!("**Session ID**: {}\n", session.session_id));
+            report.push_str(&format!("**Final Status**: {:?}\n\n", session.state_status));
+            
+            report.push_str("## Collate Facts vs. Blockers\n");
+            report.push_str("### Verified Facts\n");
+            for fact in &session.state.verified_facts.items {
+                report.push_str(&format!("- {}\n", fact.value));
+            }
+            
+            report.push_str("\n### Blockers & Issues\n");
+            for blocker in &session.state.blockers.items {
+                report.push_str(&format!("- {}\n", blocker.value));
+            }
+            
+            let report_dir = Path::new("brain/post-mortems");
+            fs::create_dir_all(report_dir)?;
+            let report_path = report_dir.join(format!("pm-{}.md", session.session_id));
+            fs::write(&report_path, &report)?;
+            println!("Local post-mortem report generated at {:?}", report_path);
+            
+            if let Ok(global_path) = get_global_system_path() {
+                let global_pm_dir = global_path.join("postmortems");
+                if fs::create_dir_all(&global_pm_dir).is_ok() {
+                    let global_pm_path = global_pm_dir.join(format!("pm-{}.md", session.session_id));
+                    fs::write(&global_pm_path, &report)?;
+                    println!("Global post-mortem report copied to {:?}", global_pm_path);
+                }
+            }
+        }
+        Commands::Charter { subcommand } => {
+            let global_path = get_global_system_path()?;
+            let charters_dir = global_path.join("charters");
+            
+            match subcommand {
+                CharterCommands::List => {
+                    println!("Agent Charters:");
+                    if !charters_dir.exists() {
+                        println!("  (No charters found in {:?})", charters_dir);
+                        return Ok(());
+                    }
+                    for entry in fs::read_dir(charters_dir)? {
+                        let entry = entry?;
+                        if entry.file_type()?.is_file() {
+                            if let Some(name) = entry.file_name().to_str() {
+                                if name.ends_with(".json") {
+                                    println!("  - {}", name.trim_end_matches(".json"));
+                                }
+                            }
+                        }
+                    }
+                }
+                CharterCommands::Show { name } => {
+                    let charter_path = charters_dir.join(format!("{}.json", name));
+                    if !charter_path.exists() {
+                        anyhow::bail!("Charter '{}' not found at {:?}", name, charter_path);
+                    }
+                    let content = fs::read_to_string(&charter_path)?;
+                    let charter: Charter = serde_json::from_str(&content)?;
+                    println!("Charter: {}", charter.name);
+                    println!("  Primary Role: {}", charter.primary_role);
+                    println!("  Secondary Capabilities: {:?}", charter.secondary_capabilities);
+                    println!("  Constraints: {:?}", charter.constraints);
+                }
+            }
+        }
+        Commands::Sign { session: session_id } => {
+            let id = session_id.unwrap_or_else(|| {
+                if let Ok(session) = Session::load(session_path) {
+                    session.session_id
+                } else {
+                    "unknown".to_string()
+                }
+            });
+            println!("🖋️ Signing session: {} (Stub - cryptographic readiness)", id);
+            println!("Provenance signature field ready for integration.");
         }
     }
 

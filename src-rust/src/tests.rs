@@ -18,11 +18,11 @@ fn test_stale_state_detection() {
     let test_dir = setup_test_dir("stale_state");
     let session_path = test_dir.join("session.json");
 
-    let session = Session::new();
+    let mut session = Session::new();
     session.save(&session_path).expect("Initial save failed");
 
     // Load session in memory (T1)
-    let session_in_mem = Session::load(&session_path).expect("Load failed");
+    let mut session_in_mem = Session::load(&session_path).expect("Load failed");
     
     // Simulate another process updating the session on disk (T2 > T1)
     // We wait a bit to ensure the timestamp is different (if granularity is low)
@@ -206,4 +206,62 @@ fn test_pre_launch_handoff_generation() {
     assert!(content.contains(&session.session_id));
     
     fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_global_path_resolution() {
+    // Mock HOME for path expansion verification
+    let test_dir = setup_test_dir("global_path");
+    let fake_home = test_dir.join("fake_home");
+    fs::create_dir_all(&fake_home).unwrap();
+    
+    // We'll test a helper that takes an optional home override or uses env
+    unsafe {
+        std::env::set_var("HOME", &fake_home);
+        #[cfg(windows)]
+        std::env::set_var("USERPROFILE", &fake_home);
+    }
+
+    let global_path = get_global_system_path().expect("Should resolve global path");
+    let expected = fake_home.join(".orchestrator").join("system");
+    assert_eq!(global_path, expected);
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_charter_serialization() {
+    let charter = Charter {
+        name: "test-agent".to_string(),
+        primary_role: "Tester".to_string(),
+        secondary_capabilities: vec!["rust".to_string(), "tdd".to_string()],
+        constraints: vec!["no-production-access".to_string()],
+    };
+    
+    let json = serde_json::to_string(&charter).expect("Serialization failed");
+    let deserialized: Charter = serde_json::from_str(&json).expect("Deserialization failed");
+    
+    assert_eq!(deserialized.name, "test-agent");
+    assert_eq!(deserialized.primary_role, "Tester");
+    assert!(deserialized.secondary_capabilities.contains(&"rust".to_string()));
+    assert!(deserialized.constraints.contains(&"no-production-access".to_string()));
+}
+
+#[test]
+fn test_provenance_signature_field() {
+    let mut prov = Provenance::new("test-value".to_string(), "user", "session-123", ProvenanceStatus::Verified);
+    
+    // Initial serialization (signature should be null/missing)
+    let json_no_sig = serde_json::to_string(&prov).expect("Serialization failed");
+    assert!(json_no_sig.contains("\"signature\":null") || !json_no_sig.contains("\"signature\""), "Signature should be null or missing");
+    
+    // Add signature
+    prov.signature = Some("mock-signature-hash".to_string());
+    let json_with_sig = serde_json::to_string(&prov).expect("Serialization failed");
+    assert!(json_with_sig.contains("mock-signature-hash"), "JSON should contain signature");
+    
+    // Verify backward compatibility (deserializing JSON without signature)
+    let legacy_json = r#"{"value":"old","source":"agent","session_id":"abc","timestamp":"2023-01-01T00:00:00Z","confidence":1.0,"status":"verified"}"#;
+    let legacy_prov: Provenance<String> = serde_json::from_str(legacy_json).expect("Legacy parse failed");
+    assert_eq!(legacy_prov.signature, None);
 }
