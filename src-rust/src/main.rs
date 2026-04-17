@@ -1,9 +1,48 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[derive(Parser)]
+#[command(name = "orch")]
+#[command(about = "AtmanVessel Orchestrator Core", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Launch a profile in a worktree
+    Launch {
+        #[arg(short, long)]
+        profile: String,
+        #[arg(short, long)]
+        worktree: Option<PathBuf>,
+    },
+    /// Freeze current state and merge validated facts
+    Freeze {
+        #[arg(short, long)]
+        message: String,
+    },
+    /// Switch to a different profile
+    Switch {
+        #[arg(short, long)]
+        profile: String,
+    },
+    /// Recover a stuck or crashed session
+    Recover,
+    /// Perform a clone-and-verify takeover
+    Takeover {
+        #[arg(short, long)]
+        profile: String,
+    },
+    /// Generate a post-mortem report
+    Postmortem,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -98,7 +137,6 @@ impl Lock {
         }
         #[cfg(windows)]
         {
-            // Simple check if process exists on Windows
             use std::process::Command;
             let output = Command::new("tasklist")
                 .arg("/FI")
@@ -110,7 +148,7 @@ impl Lock {
                 let s = String::from_utf8_lossy(&out.stdout);
                 s.contains(&self.pid.to_string())
             } else {
-                true // Fallback to safe side
+                true
             }
         }
     }
@@ -119,14 +157,14 @@ impl Lock {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Profile {
     pub name: String,
-    pub provider: String, // "gemini" | "codex"
+    pub provider: String,
     pub root: PathBuf,
     pub role: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MergeableList<T> {
-    pub merge_strategy: String, // "append-unique"
+    pub merge_strategy: String,
     pub items: Vec<Provenance<T>>,
 }
 
@@ -223,26 +261,6 @@ impl Session {
         self.touch();
     }
 
-    pub fn set_task(&mut self, task: &str, source: &str) {
-        self.current_task = Some(Provenance::new(
-            task.to_string(),
-            source,
-            &self.session_id,
-            ProvenanceStatus::Asserted,
-        ));
-        self.touch();
-    }
-    
-    pub fn add_fact(&mut self, fact: &str, source: &str, status: ProvenanceStatus) {
-        self.state.verified_facts.append(Provenance::new(
-            fact.to_string(),
-            source,
-            &self.session_id,
-            status,
-        ));
-        self.touch();
-    }
-
     pub fn acquire_lock(&mut self, worktree: PathBuf, profile: &str) -> Result<Lock> {
         let lock_dir = Path::new(".orchestrator/locks");
         let lock_name = format!("{}.json", profile);
@@ -253,7 +271,6 @@ impl Session {
             if existing.is_live() && existing.session_id != self.session_id {
                 anyhow::bail!("Worktree already locked by session {} (profile {})", existing.session_id, existing.profile);
             }
-            println!("Replacing stale or same-session lock.");
         }
 
         let lock = Lock::new(worktree, &self.session_id, profile);
@@ -284,35 +301,46 @@ impl Session {
 }
 
 fn main() -> Result<()> {
-    println!("AtmanVessel Orchestrator Core MVP v1.4.0");
-
+    let cli = Cli::parse();
     let session_path = Path::new(".orchestrator/session.json");
-    let mut session = if session_path.exists() {
-        println!("Loading existing session...");
-        Session::load(session_path)?
-    } else {
-        println!("Initializing new session...");
-        let mut s = Session::new();
-        s.set_active_profile("chief", "system");
-        s.set_task("Phase 3: Worktree Safety Implementation", "user");
-        s.add_fact("Environment assumptions validated via probes", "chief", ProvenanceStatus::Verified);
-        s.add_fact("Rust core scaffolding complete", "builder", ProvenanceStatus::Verified);
-        s.add_fact("Provenance-aware State Core complete", "builder", ProvenanceStatus::Verified);
-        s
-    };
 
-    println!("Session ID: {}", session.session_id);
-    
-    println!("Attempting to acquire lock for profile 'builder'...");
-    let lock = session.acquire_lock(std::env::current_dir()?, "builder")?;
-    println!("Lock acquired: {:?}", lock);
-
-    session.touch();
-    session.save(session_path)?;
-    
-    println!("\n--- Handoff Artifact ---");
-    println!("{}", session.generate_handoff());
-    println!("------------------------\n");
+    match cli.command {
+        Commands::Launch { profile, worktree } => {
+            println!("🚀 Launching profile: {}", profile);
+            let mut session = if session_path.exists() {
+                Session::load(session_path)?
+            } else {
+                Session::new()
+            };
+            
+            let wt = worktree.unwrap_or(std::env::current_dir()?);
+            session.acquire_lock(wt, &profile)?;
+            session.set_active_profile(&profile, "user");
+            session.state_status = StateStatus::Running;
+            session.save(session_path)?;
+            
+            let handoff_path = Path::new(".orchestrator/HANDOFF.md");
+            fs::write(handoff_path, session.generate_handoff())?;
+            println!("Handoff generated at {:?}", handoff_path);
+        }
+        Commands::Freeze { message } => {
+            println!("❄️ Freezing session: {}", message);
+            let mut session = Session::load(session_path)?;
+            session.state_status = StateStatus::Paused;
+            session.state.verified_facts.append(Provenance::new(
+                message,
+                session.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("unknown"),
+                &session.session_id,
+                ProvenanceStatus::Verified,
+            ));
+            session.touch();
+            session.save(session_path)?;
+            println!("Session frozen and saved.");
+        }
+        _ => {
+            println!("Command not yet implemented in MVP core.");
+        }
+    }
 
     Ok(())
 }
