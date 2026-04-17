@@ -95,3 +95,115 @@ fn test_takeover_lock_replacement() {
     
     fs::remove_dir_all(test_dir).ok();
 }
+
+#[test]
+fn test_auth_bootstrapping_integrity() {
+    let test_dir = setup_test_dir("auth_bootstrapping");
+    let source_dir = test_dir.join("source_gemini");
+    let target_dir = test_dir.join("target_profile");
+    
+    fs::create_dir_all(&source_dir).unwrap();
+    
+    let files = [
+        "google_accounts.json",
+        "oauth_creds.json",
+        "settings.json",
+        "projects.json",
+        "state.json",
+    ];
+    
+    for file in &files {
+        fs::write(source_dir.join(file), format!("content for {}", file)).unwrap();
+    }
+    
+    bootstrap_profile_from_source(&source_dir, &target_dir).expect("Bootstrapping failed");
+    
+    for file in &files {
+        let target_file = target_dir.join(file);
+        assert!(target_file.exists(), "File {} missing in target", file);
+        let content = fs::read_to_string(target_file).unwrap();
+        assert_eq!(content, format!("content for {}", file));
+    }
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_auth_bootstrapping_no_overwrite() {
+    let test_dir = setup_test_dir("auth_no_overwrite");
+    let source_dir = test_dir.join("source_gemini");
+    let target_dir = test_dir.join("target_profile");
+    
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(&target_dir).unwrap();
+    
+    let file = "google_accounts.json";
+    fs::write(source_dir.join(file), "new content").unwrap();
+    fs::write(target_dir.join(file), "original content").unwrap();
+    
+    bootstrap_profile_from_source(&source_dir, &target_dir).expect("Bootstrapping failed");
+    
+    let content = fs::read_to_string(target_dir.join(file)).unwrap();
+    assert_eq!(content, "original content", "Should not have overwritten existing file");
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_command_environment_redirection() {
+    let test_dir = setup_test_dir("env_redirection");
+    let profile_root = test_dir.join("profile_abc");
+    fs::create_dir_all(&profile_root).unwrap();
+    
+    let cmd = prepare_launch_command("gemini", &profile_root, &[]);
+    
+    let envs: Vec<_> = cmd.get_envs().collect();
+    let home_env = envs.iter().find(|(k, _)| k.to_str() == Some("HOME"));
+    
+    assert!(home_env.is_some(), "HOME environment variable not set");
+    let (_, val) = home_env.unwrap();
+    assert_eq!(val.unwrap(), profile_root.as_os_str());
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_pre_launch_state_transition() {
+    let test_dir = setup_test_dir("state_transition");
+    let session_path = test_dir.join("session.json");
+    
+    let mut session = Session::new();
+    session.state_status = StateStatus::Planned;
+    session.save(&session_path).unwrap();
+    
+    // Reload to update loaded_at and avoid "state on disk is newer" error
+    let mut session = Session::load(&session_path).unwrap();
+    session.state_status = StateStatus::Running;
+    session.save(&session_path).unwrap();
+    
+    // Verify on disk
+    let saved_session = Session::load(&session_path).unwrap();
+    assert_eq!(saved_session.state_status, StateStatus::Running);
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_pre_launch_handoff_generation() {
+    let test_dir = setup_test_dir("handoff_generation");
+    let handoff_path = test_dir.join("HANDOFF.md");
+    
+    let mut session = Session::new();
+    session.current_task = Some(Provenance::new("test task".to_string(), "user", &session.session_id, ProvenanceStatus::Verified));
+    
+    // Simulate pre-launch logic
+    fs::write(&handoff_path, session.generate_handoff()).unwrap();
+    
+    // Verify handoff exists and contains expected content
+    assert!(handoff_path.exists());
+    let content = fs::read_to_string(&handoff_path).unwrap();
+    assert!(content.contains("test task"));
+    assert!(content.contains(&session.session_id));
+    
+    fs::remove_dir_all(test_dir).ok();
+}

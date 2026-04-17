@@ -22,6 +22,12 @@ enum Commands {
         profile: String,
         #[arg(short, long)]
         worktree: Option<PathBuf>,
+        /// CLI to launch (gemini or codex)
+        #[arg(default_value = "gemini")]
+        cli: String,
+        /// Arguments to pass to the CLI
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
     /// Freeze current state and merge validated facts
     Freeze {
@@ -383,6 +389,45 @@ impl Session {
     }
 }
 
+pub fn bootstrap_profile(profile_root: &Path) -> Result<()> {
+    let source_dir = std::env::home_dir()
+        .map(|p| p.join(".gemini"))
+        .context("Could not find home directory")?;
+    let target_dir = profile_root.join(".gemini");
+    bootstrap_profile_from_source(&source_dir, &target_dir)
+}
+
+pub fn bootstrap_profile_from_source(source_dir: &Path, profile_path: &Path) -> Result<()> {
+    if !profile_path.exists() {
+        fs::create_dir_all(profile_path)?;
+    }
+    
+    let files = [
+        "google_accounts.json",
+        "oauth_creds.json",
+        "settings.json",
+        "projects.json",
+        "state.json",
+    ];
+
+    for file in &files {
+        let src = source_dir.join(file);
+        let dst = profile_path.join(file);
+        if src.exists() && !dst.exists() {
+            fs::copy(src, dst)?;
+        }
+    }
+    
+    Ok(())
+}
+
+pub fn prepare_launch_command(cli: &str, profile_path: &Path, args: &[String]) -> std::process::Command {
+    let mut cmd = std::process::Command::new(cli);
+    cmd.env("HOME", profile_path);
+    cmd.args(args);
+    cmd
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -392,8 +437,8 @@ fn main() -> Result<()> {
     let session_path = Path::new(".orchestrator/session.json");
 
     match cli.command {
-        Commands::Launch { profile, worktree } => {
-            println!("🚀 Launching profile: {}", profile);
+        Commands::Launch { profile, worktree, cli, args } => {
+            println!("🚀 Launching {} in profile: {}", cli, profile);
             let mut session = if session_path.exists() {
                 Session::load(session_path)?
             } else {
@@ -401,14 +446,49 @@ fn main() -> Result<()> {
             };
             
             let wt = worktree.unwrap_or(std::env::current_dir()?);
-            session.acquire_lock(wt, &profile)?;
+            let profiles_dir = wt.join(".orchestrator/profiles");
+            let profile_root = profiles_dir.join(&profile);
+            
+            // Register profile if new
+            if !session.profiles.contains_key(&profile) {
+                session.profiles.insert(profile.clone(), Profile {
+                    name: profile.clone(),
+                    provider: "google".to_string(),
+                    root: profile_root.clone(),
+                    role: None,
+                    default_classification: DataClassification::Internal,
+                });
+            }
+
+            session.acquire_lock(wt.clone(), &profile)?;
             session.set_active_profile(&profile, "user");
             session.state_status = StateStatus::Running;
             session.save(session_path)?;
             
-            let handoff_path = Path::new(".orchestrator/HANDOFF.md");
-            fs::write(handoff_path, session.generate_handoff())?;
+            // Bootstrap
+            bootstrap_profile(&profile_root)?;
+
+            let handoff_path = wt.join(".orchestrator/HANDOFF.md");
+            fs::write(&handoff_path, session.generate_handoff())?;
             println!("Handoff generated at {:?}", handoff_path);
+
+            let mut cmd = prepare_launch_command(&cli, &profile_root, &args);
+            
+            cmd.stdin(std::process::Stdio::inherit())
+               .stdout(std::process::Stdio::inherit())
+               .stderr(std::process::Stdio::inherit());
+
+            let mut child = cmd.spawn().with_context(|| format!("Failed to spawn CLI: {}", cli))?;
+            let status = child.wait().context("Failed to wait for CLI process")?;
+            
+            if !status.success() {
+                session.state_status = StateStatus::Crashed;
+                session.save(session_path)?;
+                anyhow::bail!("CLI process exited with non-zero status: {}", status);
+            } else {
+                session.state_status = StateStatus::Completed;
+                session.save(session_path)?;
+            }
         }
         Commands::Freeze { message } => {
             println!("❄️ Freezing session: {}", message);
@@ -461,6 +541,34 @@ fn main() -> Result<()> {
             session.set_active_profile(&profile, "takeover");
             session.save(session_path)?;
             println!("Takeover successful.");
+        }
+        Commands::Switch { profile } => {
+            println!("🔄 Switching to profile: {}", profile);
+            let mut session = Session::load(session_path)?;
+            
+            let wt = std::env::current_dir()?;
+            let profile_root = wt.join(".orchestrator/profiles").join(&profile);
+            
+            if !session.profiles.contains_key(&profile) {
+                session.profiles.insert(profile.clone(), Profile {
+                    name: profile.clone(),
+                    provider: "google".to_string(),
+                    root: profile_root.clone(),
+                    role: None,
+                    default_classification: DataClassification::Internal,
+                });
+            }
+            
+            session.set_active_profile(&profile, "user");
+            session.save(session_path)?;
+            println!("Active profile switched to: {}", profile);
+        }
+        Commands::Recover => {
+            println!("💊 Recovering session...");
+            let session = Session::load(session_path)?;
+            let recovery_path = Path::new(".orchestrator/RECOVERY.md");
+            fs::write(recovery_path, session.generate_recovery())?;
+            println!("Recovery report generated at {:?}", recovery_path);
         }
         _ => {
             println!("Command not yet implemented in MVP core.");
