@@ -1,28 +1,26 @@
-# ORCHESTRATOR HANDOFF
+# PHASE 6 PART 1: TEST SUITE (TDD) HANDOFF
 
 ## 1. Task Context
-**Current Goal**: Phase 1.5: Hardening & Reproducibility
+**Current Goal**: Write unit tests for Phase 6 requirements (Platform Polish).
 **Status**: **COMPLETED**
-**Files in Focus**: `scripts/probes/*`, `scripts/probe.sh`, `orch.sh`
+**Files in Focus**: `src-rust/src/tests.rs`, `src-rust/src/main.rs`
 
 ## 2. Progress Log
-- [x] Verified: Reproducible probe harness (`bash scripts/probe.sh`).
-- [x] Verified: Two-profile authenticated coexistence (no contamination).
-- [x] Verified: Platform Matrix (WSL detection logic hardened).
-- [x] Verified: `orch.sh` updated with full bootstrapping.
-- [x] Verified: Documentation of `sed` as experimental/temporary.
+- [x] Added `test_scaffolding_integrity` for `orch init`.
+- [x] Added `test_status_report_accuracy` for `orch status`.
+- [x] Added `test_wsl_detection` with mocked `/proc/version`.
+- [x] Added `test_cleanup_safety` for `orch cleanup`.
+- [x] Added command stubs and `is_wsl` logic to `src-rust/src/main.rs` to support tests.
+- [x] Verified all tests pass with `cargo test`.
 
-## 3. Profile Specific Directives
-### 🛠️ For Builder (Gemini)
-- Proceed to Phase 2: MVP Scaffolding (Rust implementation).
-- Use `scripts/probe.sh` to re-validate environment after any major changes.
-- In Phase 2, implement a robust JSON state manager in Rust to replace `sed`.
-### 🔍 For Auditor (Gemini)
-- Review `scripts/probes/isolation.sh` for switching logic robustness.
-- Verify `summary.md` reflects the final hardened results.
-### 🏗️ For Chief (Codex)
-- Phase 1.5 successfully addressed all architectural gaps. Phase 2 is unblocked.
+## 3. Mental Map
+- The `is_wsl` function was refactored to `is_wsl_internal` to allow mocking the path in tests.
+- `Session::init`, `Session::status`, and `Session::cleanup` were added as functional stubs to satisfy TDD requirements while leaving the full implementation for the Builder agent.
+- `Commands` enum was updated with the new Phase 6 commands.
 
-## 4. How to Resume
-1. Run `bash scripts/probe.sh` to see current environment validation.
-2. Review Phase 2 directive in `.agent/workflows/orchestrator-master-spec.md`.
+## 4. Next Steps for Builder Agent
+- Fully implement `orch init` (ensure robust path handling).
+- Fully implement `orch status` (add more session details, colorized output).
+- Fully implement `orch profiles list`.
+- Fully implement `orch cleanup` (add archival logic for old handoffs).
+- Refine platform-specific process liveness in `Lock::is_live()`.
