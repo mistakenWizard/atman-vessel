@@ -265,3 +265,147 @@ fn test_provenance_signature_field() {
     let legacy_prov: Provenance<String> = serde_json::from_str(legacy_json).expect("Legacy parse failed");
     assert_eq!(legacy_prov.signature, None);
 }
+
+#[test]
+fn test_scaffolding_integrity() {
+    let test_dir = setup_test_dir("scaffolding");
+    
+    Session::init(&test_dir).expect("Init failed");
+    
+    assert!(test_dir.join(".orchestrator/locks").exists());
+    assert!(test_dir.join(".orchestrator/profiles").exists());
+    assert!(test_dir.join(".orchestrator/session.json").exists());
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_status_report_accuracy() {
+    let test_dir = setup_test_dir("status_accuracy");
+    let lock_dir = test_dir.join(".orchestrator/locks");
+    fs::create_dir_all(&lock_dir).unwrap();
+    
+    let mut session = Session::new();
+    let profile = "test-profile";
+    session.set_active_profile(profile, "user");
+    
+    let pid = 12345;
+    let mut lock = Lock::new(test_dir.clone(), &session.session_id, profile);
+    lock.pid = pid;
+    lock.save(lock_dir.join(format!("{}.json", profile))).unwrap();
+    
+    // We need to be in the test_dir for status to find the lock if it uses relative paths
+    // But our status stub uses Path::new(".orchestrator/locks")
+    // So we temporarily change dir or mock the path in status.
+    // For TDD, we'll assume status is refined later to handle paths better, 
+    // but here we'll just ensure it contains the expected strings.
+    
+    let current_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&test_dir).unwrap();
+    
+    let report = session.status();
+    
+    std::env::set_current_dir(current_dir).unwrap();
+    
+    assert!(report.contains(profile));
+    assert!(report.contains(&pid.to_string()));
+    assert!(report.contains(&session.session_id));
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_wsl_detection() {
+    let test_dir = setup_test_dir("wsl_detection");
+    let proc_version = test_dir.join("proc_version");
+    
+    // Mock WSL
+    fs::write(&proc_version, "Linux version 5.15.133.1-microsoft-standard-WSL2").unwrap();
+    assert!(is_wsl_internal(proc_version.to_str().unwrap()));
+    
+    // Mock non-WSL
+    fs::write(&proc_version, "Linux version 5.15.0-88-generic (buildd@lcy02-amd64-010)").unwrap();
+    assert!(!is_wsl_internal(proc_version.to_str().unwrap()));
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_cleanup_safety() {
+    let test_dir = setup_test_dir("cleanup_safety");
+    let lock_dir = test_dir.join(".orchestrator/locks");
+    fs::create_dir_all(&lock_dir).unwrap();
+    
+    // 1. Live lock (our PID)
+    let live_profile = "live-profile";
+    let live_lock = Lock::new(test_dir.clone(), "session-live", live_profile);
+    live_lock.save(lock_dir.join(format!("{}.json", live_profile))).unwrap();
+    
+    // 2. Stale lock (dead PID)
+    let stale_profile = "stale-profile";
+    let mut stale_lock = Lock::new(test_dir.clone(), "session-stale", stale_profile);
+    stale_lock.pid = 999999; 
+    stale_lock.save(lock_dir.join(format!("{}.json", stale_profile))).unwrap();
+    
+    Session::cleanup(&test_dir).expect("Cleanup failed");
+    
+    assert!(lock_dir.join(format!("{}.json", live_profile)).exists(), "Live lock should remain");
+    assert!(!lock_dir.join(format!("{}.json", stale_profile)).exists(), "Stale lock should be removed");
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_profiles_list() {
+    let test_dir = setup_test_dir("profiles_list");
+    let session_path = test_dir.join(".orchestrator/session.json");
+    
+    Session::init(&test_dir).unwrap();
+    let mut session = Session::load(&session_path).unwrap();
+    
+    session.profiles.insert("p1".to_string(), Profile {
+        name: "p1".to_string(),
+        provider: "p".to_string(),
+        root: PathBuf::from("r1"),
+        role: None,
+        default_classification: DataClassification::Internal,
+    });
+    session.profiles.insert("p2".to_string(), Profile {
+        name: "p2".to_string(),
+        provider: "p".to_string(),
+        root: PathBuf::from("r2"),
+        role: None,
+        default_classification: DataClassification::Internal,
+    });
+    session.set_active_profile("p1", "test");
+    session.save(&session_path).unwrap();
+    
+    // We can't easily capture stdout here without more infra, 
+    // but we can at least verify the session logic.
+    let session = Session::load(&session_path).unwrap();
+    assert!(session.profiles.contains_key("p1"));
+    assert!(session.profiles.contains_key("p2"));
+    assert_eq!(session.active_profile.unwrap().value, "p1");
+    
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_cleanup_handoff_archiving() {
+    let test_dir = setup_test_dir("cleanup_handoff");
+    let handoff_path = test_dir.join(".orchestrator/HANDOFF.md");
+    let archive_dir = test_dir.join(".orchestrator/archives");
+    
+    fs::create_dir_all(test_dir.join(".orchestrator")).unwrap();
+    fs::write(&handoff_path, "some handoff content").unwrap();
+    
+    Session::cleanup(&test_dir).expect("Cleanup failed");
+    
+    assert!(!handoff_path.exists(), "Original handoff should be gone");
+    assert!(archive_dir.exists(), "Archive directory should exist");
+    
+    let archives: Vec<_> = fs::read_dir(archive_dir).unwrap().collect();
+    assert_eq!(archives.len(), 1, "Should have one archived handoff");
+    
+    fs::remove_dir_all(test_dir).ok();
+}

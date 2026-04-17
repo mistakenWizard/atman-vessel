@@ -63,6 +63,23 @@ enum Commands {
         #[command(subcommand)]
         subcommand: GovernanceCommands,
     },
+    /// Initialize orchestrator environment
+    Init,
+    /// Show current session status
+    Status,
+    /// Manage profiles
+    Profiles {
+        #[command(subcommand)]
+        subcommand: ProfileCommands,
+    },
+    /// Cleanup stale locks and old artifacts
+    Cleanup,
+}
+
+#[derive(Subcommand)]
+enum ProfileCommands {
+    /// List all registered profiles
+    List,
 }
 
 #[derive(Subcommand)]
@@ -159,6 +176,19 @@ pub struct Charter {
 pub fn get_global_system_path() -> Result<PathBuf> {
     let home = dirs::home_dir().context("Could not find home directory")?;
     Ok(home.join(".orchestrator").join("system"))
+}
+
+pub fn is_wsl() -> bool {
+    is_wsl_internal("/proc/version")
+}
+
+fn is_wsl_internal(path: &str) -> bool {
+    if cfg!(target_os = "linux") || cfg!(test) {
+        if let Ok(content) = fs::read_to_string(path) {
+            return content.to_lowercase().contains("microsoft");
+        }
+    }
+    false
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -423,6 +453,86 @@ impl Session {
         self.touch();
         Ok(())
     }
+
+    pub fn init(path: &Path) -> Result<Self> {
+        let lock_dir = path.join(".orchestrator/locks");
+        let profile_dir = path.join(".orchestrator/profiles");
+        fs::create_dir_all(lock_dir)?;
+        fs::create_dir_all(profile_dir)?;
+        
+        let mut session = Session::new();
+        session.save(path.join(".orchestrator/session.json"))?;
+        Ok(session)
+    }
+
+    pub fn status(&self) -> String {
+        let mut status = String::new();
+        status.push_str("\x1b[1;36m=== Orchestrator Session Status ===\x1b[0m\n");
+        status.push_str(&format!("ID:     {}\n", self.session_id));
+        
+        let status_color = match self.state_status {
+            StateStatus::Running => "\x1b[32m",
+            StateStatus::Crashed | StateStatus::Stuck => "\x1b[31m",
+            StateStatus::Blocked => "\x1b[33m",
+            _ => "\x1b[34m",
+        };
+        status.push_str(&format!("Status: {}{:?}\x1b[0m\n", status_color, self.state_status));
+        status.push_str(&format!("Class:  {:?}\n", self.classification));
+        status.push_str(&format!("Active: \x1b[1m{}\x1b[0m\n", self.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("None")));
+        
+        let lock_dir = Path::new(".orchestrator/locks");
+        if let Some(profile_prov) = &self.active_profile {
+            let lock_path = lock_dir.join(format!("{}.json", profile_prov.value));
+            if let Ok(lock) = Lock::load(lock_path) {
+                if lock.is_live() {
+                    status.push_str(&format!("Lock:   \x1b[32mLIVE (PID: {})\x1b[0m\n", lock.pid));
+                } else {
+                    status.push_str(&format!("Lock:   \x1b[31mSTALE (Dead PID: {})\x1b[0m\n", lock.pid));
+                }
+            } else {
+                status.push_str("Lock:   None\n");
+            }
+        }
+
+        if let Some(goal) = &self.state.goal {
+            status.push_str(&format!("\n\x1b[1mGoal:\x1b[0m {}\n", goal.value));
+        } else if let Some(task) = &self.current_task {
+            status.push_str(&format!("\n\x1b[1mTask:\x1b[0m {}\n", task.value));
+        }
+        
+        status
+    }
+
+    pub fn cleanup(worktree: &Path) -> Result<()> {
+        let lock_dir = worktree.join(".orchestrator/locks");
+        if lock_dir.exists() {
+            for entry in fs::read_dir(lock_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    if let Ok(lock) = Lock::load(&path) {
+                        if !lock.is_live() {
+                            println!("  Removing stale lock: {:?}", path.file_name().unwrap_or_default());
+                            fs::remove_file(path)?;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Archive handoff if it exists
+        let handoff_path = worktree.join(".orchestrator/HANDOFF.md");
+        if handoff_path.exists() {
+            let archive_dir = worktree.join(".orchestrator/archives");
+            fs::create_dir_all(&archive_dir)?;
+            let now = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+            let archived_name = format!("HANDOFF_{}.md", now);
+            println!("  Archiving handoff to {:?}", archive_dir.join(&archived_name));
+            fs::rename(&handoff_path, archive_dir.join(archived_name))?;
+        }
+        
+        Ok(())
+    }
 }
 
 pub fn bootstrap_profile(profile_root: &Path) -> Result<()> {
@@ -474,14 +584,17 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Launch { profile, worktree, cli, args } => {
-            println!("🚀 Launching {} in profile: {}", cli, profile);
-            let mut session = if session_path.exists() {
-                Session::load(session_path)?
-            } else {
-                Session::new()
-            };
-            
             let wt = worktree.unwrap_or(std::env::current_dir()?);
+            let session_path = wt.join(".orchestrator/session.json");
+
+            if !session_path.exists() {
+                println!("🏗️ Implicitly initializing orchestrator in {:?}", wt);
+                Session::init(&wt)?;
+            }
+
+            println!("🚀 Launching {} in profile: {}", cli, profile);
+            let mut session = Session::load(&session_path)?;
+            
             let profiles_dir = wt.join(".orchestrator/profiles");
             let profile_root = profiles_dir.join(&profile);
             
@@ -499,7 +612,7 @@ fn main() -> Result<()> {
             session.acquire_lock(wt.clone(), &profile)?;
             session.set_active_profile(&profile, "user");
             session.state_status = StateStatus::Running;
-            session.save(session_path)?;
+            session.save(&session_path)?;
             
             // Bootstrap
             bootstrap_profile(&profile_root)?;
@@ -519,11 +632,11 @@ fn main() -> Result<()> {
             
             if !status.success() {
                 session.state_status = StateStatus::Crashed;
-                session.save(session_path)?;
+                session.save(&session_path)?;
                 anyhow::bail!("CLI process exited with non-zero status: {}", status);
             } else {
                 session.state_status = StateStatus::Completed;
-                session.save(session_path)?;
+                session.save(&session_path)?;
             }
         }
         Commands::Freeze { message } => {
@@ -687,6 +800,36 @@ fn main() -> Result<()> {
             });
             println!("🖋️ Signing session: {} (Stub - cryptographic readiness)", id);
             println!("Provenance signature field ready for integration.");
+        }
+        Commands::Init => {
+            println!("🏗️ Initializing orchestrator...");
+            let worktree = std::env::current_dir()?;
+            Session::init(&worktree)?;
+            println!("Done.");
+        }
+        Commands::Status => {
+            let session = Session::load(session_path)?;
+            println!("{}", session.status());
+        }
+        Commands::Profiles { subcommand } => {
+            match subcommand {
+                ProfileCommands::List => {
+                    let session = Session::load(session_path)?;
+                    println!("Registered Profiles:");
+                    for name in session.profiles.keys() {
+                        let active = if let Some(ap) = &session.active_profile {
+                            if ap.value == *name { " [Active]" } else { "" }
+                        } else { "" };
+                        println!("  - {}{}", name, active);
+                    }
+                }
+            }
+        }
+        Commands::Cleanup => {
+            println!("🧹 Cleaning up stale locks...");
+            let worktree = std::env::current_dir()?;
+            Session::cleanup(&worktree)?;
+            println!("Done.");
         }
     }
 
