@@ -1,36 +1,39 @@
-# Codex CLI Agent Standards (Task-Centric)
+# AtmanVessel Codex Guide
 
-## Multi-Agent Coordination 
-**CRITICAL:** This project is shared with other agents. You MUST use Task-Based Worktrees.
+## Repo Purpose
+AtmanVessel is a local AI orchestration framework for deterministic session resumption and context continuity across isolated model profiles.
 
-### Execution Flow:
-1. **Claim Task:** Run `task start <slug>` in the root directory.
-2. **Switch Context:** `cd` to the path printed (e.g., `E:\rust-algo-task-xyz`).
-3. **Verify:** Run `git branch` to ensure you are on `task/<slug>`.
-4. **Work:** Perform all implementation and testing ONLY in this worktree.
-5. **Pause:** If stopping, write to `.agent/handoffs/<slug>.md` and run `task handoff <slug>`.
+## Key Paths
+- `src-rust/`: Rust orchestrator core
+- `src-rust/src/main.rs`: main CLI implementation
+- `src-rust/src/tests.rs`: Rust test suite
+- `orch.sh`: shell shim that builds and runs the Rust binary
+- `.orchestrator/`: runtime state, locks, handoff, recovery, and archives; do not commit runtime artifacts
+- `.agent/workflows/`: design and specification documents
+- `brain/`: plans and postmortems
 
-**Never** work in the root `E:\rust-algo` directory.
-**Always** check `D:\claude-setup\knowledge\` for global standards before starting.
+## Working Rules
+- Do not re-track generated or runtime artifacts under `.orchestrator/`, `src-rust/.orchestrator/`, or `src-rust/target/`
+- Preserve user or other-agent changes; do not revert unrelated work
+- Expect the repo to be dirty while generated runtime and build artifacts are being removed from Git tracking
 
-### Verified Windows Workflow
-- Preferred task command: `& .\scripts\task.ps1 start <slug>`
-- Preferred verification command: `& .\scripts\cargo-check-windows.ps1`
-- If `task` shell aliases are unavailable, use the PowerShell script directly.
-- Rust worktrees may need access to repo-local `.tdlib` for compile/test flows.
+## Verified Commands
+- Initialize orchestrator state: `./orch.sh init`
+- Launch a profiled session: `./orch.sh launch --profile builder --new-worktree`
+- WSL verification: `wsl bash -lc 'cd /mnt/e/atman-vessel/src-rust && cargo fmt && cargo test'`
 
-## Command Execution Standards (STRICT)
-1. **Prefer concise commands:** Use short commands when practical, but use repo-native PowerShell scripts when they are the authoritative workflow.
-2. **Missing Utilities:** Install missing Unix tools via `winget` or `choco`.
-3. **PowerShell is valid here:** Shared repo automation such as `scripts/task.ps1` and `scripts/cargo-check-windows.ps1` is preferred over ad hoc command substitutions.
+## Environment Notes
+- Prefer WSL for Rust verification unless the Windows-native linker path is fixed
+- Windows-native `cargo test` can fail if `link.exe` resolves to Git's Unix `link.exe` instead of the MSVC linker
 
-## Tech Stack
-- **Language:** Rust
-- **Runtime:** Tokio
-- **Broker:** Dhan API
-- **Communication:** Telegram (tdlib-rs)
+## Additional Notes
+- `README_ORCHESTRATOR.md` is the quickest operator-facing command reference
+- `./orch.sh verify` promotes only `verified_facts`; it does not auto-verify blockers or next actions
+- Current `git status` may show many staged deletions because generated, runtime, and auth-related artifacts are being removed from Git tracking
 
-## Key Entry Points
-- `src/main.rs` contains the root trading runtime and monitor loop.
-- `src/option_selling/system.rs` contains the option-selling runtime and monitor loop.
-- `src/trading/config.rs` and `src/option_selling/config.rs` contain the main runtime configuration surfaces.
+## Current Focus
+- Rust CLI behavior
+- state management and provenance
+- lock behavior and takeover safety
+- recovery flows
+- repo hygiene around generated and auth-related files

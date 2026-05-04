@@ -1,2 +1,62 @@
+# Rust build output.
 target/
-src-rust/target/
+**/target/
+
+# Local orchestrator runtime state, generated handoffs, locks, profiles, probes,
+# crash recovery, archives, and isolated worktrees.
+.orchestrator/
+**/.orchestrator/
+.worktrees/
+**/.worktrees/
+
+# Generated local reports/state that can contain run-specific context.
+src-rust/brain/post-mortems/
+
+# Provider credentials and local auth caches must never be committed.
+**/.gemini/
+**/.codex/auth.json
+**/.codex/config.toml
+**/.codex/sessions/
+**/.codex/history.jsonl
+
+# Environment files and local overrides.
+.env
+.env.*
+!.env.example
+*.local
+*.local.*
+
+# Secrets, tokens, certificates, and private keys.
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.token
+*token*
+*secret*
+*credential*
+*credentials*
+*oauth*
+
+# Logs, transcripts, dumps, and temporary files.
+*.log
+*.trace
+*.dump
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.pid
+logs/
+tmp/
+temp/
+
+# OS and editor noise.
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
