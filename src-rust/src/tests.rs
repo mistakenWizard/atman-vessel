@@ -720,3 +720,62 @@ fn test_resume_error_handling() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().to_string(), "No active profile found");
 }
+
+#[test]
+fn test_board_task_update() {
+    let test_dir = setup_test_dir("board_update");
+    let board = Board::new(&test_dir);
+    
+    let task = Task {
+        slug: "test-task".to_string(),
+        agent: "builder".to_string(),
+        status: "In Progress".to_string(),
+        path: "/tmp/test".to_string(),
+    };
+    
+    board.update_task(&task).expect("Failed to update task");
+    
+    let content = fs::read_to_string(&board.path).expect("Failed to read board");
+    assert!(content.contains("test-task"));
+    assert!(content.contains("builder"));
+    assert!(content.contains("In Progress"));
+    
+    // Update existing
+    let mut updated_task = task.clone();
+    updated_task.status = "Done".to_string();
+    board.update_task(&updated_task).expect("Failed to update task second time");
+    
+    let updated_content = fs::read_to_string(&test_dir.join(".agent/BOARD.md")).unwrap();
+    assert!(updated_content.contains("Done"));
+    assert!(!updated_content.contains("In Progress"));
+
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[tokio::test]
+async fn test_mcp_handler_status() {
+    let test_dir = setup_test_dir("mcp_status");
+    let current_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&test_dir).unwrap();
+    
+    Session::init(Path::new(".")).unwrap();
+    
+    let req = McpRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({
+            "name": "get_status",
+            "arguments": {}
+        })),
+        id: Some(serde_json::json!(1)),
+    };
+    
+    let resp = handle_mcp_request(req).await;
+    assert!(resp.result.is_some());
+    let result = resp.result.unwrap();
+    let text = result["content"][0]["text"].as_str().unwrap();
+    assert!(text.contains("Orchestrator Session Status"));
+    
+    std::env::set_current_dir(current_dir).unwrap();
+    fs::remove_dir_all(test_dir).ok();
+}
