@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -106,9 +107,7 @@ enum CharterCommands {
     /// List all available agent charters
     List,
     /// Show details of a specific agent charter
-    Show {
-        name: String,
-    },
+    Show { name: String },
 }
 
 #[derive(Subcommand)]
@@ -250,7 +249,7 @@ impl Lock {
     pub fn is_live(&self) -> bool {
         #[cfg(unix)]
         {
-            use libc::{kill, ESRCH};
+            use libc::{ESRCH, kill};
             unsafe {
                 let res = kill(self.pid as i32, 0);
                 res == 0 || std::io::Error::last_os_error().raw_os_error() != Some(ESRCH)
@@ -264,7 +263,7 @@ impl Lock {
                 .arg(format!("PID eq {}", self.pid))
                 .arg("/NH")
                 .output();
-            
+
             if let Ok(out) = output {
                 let s = String::from_utf8_lossy(&out.stdout);
                 s.contains(&self.pid.to_string())
@@ -360,8 +359,8 @@ impl Session {
         let path = path.as_ref();
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read session file at {:?}", path))?;
-        let mut session: Session = serde_json::from_str(&content)
-            .with_context(|| "Failed to parse session JSON")?;
+        let mut session: Session =
+            serde_json::from_str(&content).with_context(|| "Failed to parse session JSON")?;
         session.loaded_at = Utc::now();
         Ok(session)
     }
@@ -372,7 +371,11 @@ impl Session {
             let metadata = fs::metadata(path)?;
             let last_modified: DateTime<Utc> = metadata.modified()?.into();
             if last_modified > self.loaded_at {
-                anyhow::bail!("State on disk is newer than loaded session ({} > {})", last_modified, self.loaded_at);
+                anyhow::bail!(
+                    "State on disk is newer than loaded session ({} > {})",
+                    last_modified,
+                    self.loaded_at
+                );
             }
         }
 
@@ -390,28 +393,10 @@ impl Session {
     }
 
     pub fn promote_facts(&mut self) {
-        if let Some(ref mut goal) = self.state.goal {
-            if goal.status == ProvenanceStatus::Observed || goal.status == ProvenanceStatus::Asserted {
-                goal.status = ProvenanceStatus::Verified;
-            }
-        }
         for item in &mut self.state.verified_facts.items {
-            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
-                item.status = ProvenanceStatus::Verified;
-            }
-        }
-        for item in &mut self.state.blockers.items {
-            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
-                item.status = ProvenanceStatus::Verified;
-            }
-        }
-        for item in &mut self.state.files_in_focus.items {
-            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
-                item.status = ProvenanceStatus::Verified;
-            }
-        }
-        for item in &mut self.state.next_actions.items {
-            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
+            if item.status == ProvenanceStatus::Observed
+                || item.status == ProvenanceStatus::Asserted
+            {
                 item.status = ProvenanceStatus::Verified;
             }
         }
@@ -430,14 +415,16 @@ impl Session {
     }
 
     pub fn acquire_lock(&mut self, worktree: PathBuf, profile: &str) -> Result<Lock> {
-        let lock_dir = Path::new(".orchestrator/locks");
-        let lock_name = format!("{}.json", profile);
-        let lock_path = lock_dir.join(lock_name);
-        
+        let lock_path = Self::lock_path(&worktree, &worktree, profile);
+
         if lock_path.exists() {
             let existing = Lock::load(&lock_path)?;
             if existing.is_live() && existing.session_id != self.session_id {
-                anyhow::bail!("Worktree already locked by session {} (profile {})", existing.session_id, existing.profile);
+                anyhow::bail!(
+                    "Worktree already locked by session {} (profile {})",
+                    existing.session_id,
+                    existing.profile
+                );
             }
         }
 
@@ -446,16 +433,58 @@ impl Session {
         Ok(lock)
     }
 
+    fn lock_path(root: &Path, worktree: &Path, profile: &str) -> PathBuf {
+        root.join(".orchestrator/locks")
+            .join(Self::lock_file_name(worktree, profile))
+    }
+
+    fn legacy_lock_path(root: &Path, profile: &str) -> PathBuf {
+        root.join(".orchestrator/locks")
+            .join(format!("{}.json", profile))
+    }
+
+    fn lock_file_name(worktree: &Path, profile: &str) -> String {
+        let safe_profile: String = profile
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+
+        let stable_worktree = worktree
+            .canonicalize()
+            .unwrap_or_else(|_| worktree.to_path_buf());
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        stable_worktree.to_string_lossy().hash(&mut hasher);
+        format!("{}-{:016x}.json", safe_profile, hasher.finish())
+    }
+
     pub fn generate_handoff(&self) -> String {
         let mut handoff = String::new();
         handoff.push_str("# ORCHESTRATOR HANDOFF\n\n");
         handoff.push_str("## 1. Task Context\n");
-        handoff.push_str(&format!("**Current Goal**: {}\n", self.current_task.as_ref().map(|p| p.value.as_str()).unwrap_or("None")));
+        handoff.push_str(&format!(
+            "**Current Goal**: {}\n",
+            self.current_task
+                .as_ref()
+                .map(|p| p.value.as_str())
+                .unwrap_or("None")
+        ));
         handoff.push_str(&format!("**Status**: {:?}\n", self.state_status));
         handoff.push_str(&format!("**Classification**: {:?}\n", self.classification));
         handoff.push_str(&format!("**Session ID**: {}\n", self.session_id));
-        handoff.push_str(&format!("**Active Profile**: {}\n", self.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("None")));
-        
+        handoff.push_str(&format!(
+            "**Active Profile**: {}\n",
+            self.active_profile
+                .as_ref()
+                .map(|p| p.value.as_str())
+                .unwrap_or("None")
+        ));
+
         handoff.push_str("\n## 2. Verified Facts\n");
         for fact in &self.state.verified_facts.items {
             handoff.push_str(&format!("- {} (Source: {})\n", fact.value, fact.source));
@@ -463,7 +492,10 @@ impl Session {
 
         handoff.push_str("\n## 3. Provenance\n");
         if let Some(ref p) = self.current_task {
-            handoff.push_str(&format!("- Task Source: {} (at {})\n", p.source, p.timestamp));
+            handoff.push_str(&format!(
+                "- Task Source: {} (at {})\n",
+                p.source, p.timestamp
+            ));
         }
         handoff
     }
@@ -473,28 +505,44 @@ impl Session {
         recovery.push_str("# CRITICAL RECOVERY\n\n");
         recovery.push_str("## Session Information\n");
         recovery.push_str(&format!("**Session ID**: {}\n", self.session_id));
-        recovery.push_str(&format!("**Last Updated**: {}\n", self.last_updated.to_rfc3339()));
+        recovery.push_str(&format!(
+            "**Last Updated**: {}\n",
+            self.last_updated.to_rfc3339()
+        ));
         recovery.push_str(&format!("**Status**: {:?}\n", self.state_status));
         recovery.push_str(&format!("**Classification**: {:?}\n", self.classification));
-        
+
         recovery.push_str("\n## Recovery Instructions\n");
         recovery.push_str("1. Verify the integrity of the state files.\n");
         recovery.push_str("2. Check for any partial writes or corrupted JSON.\n");
-        recovery.push_str(&format!("3. Run `orch takeover --profile {}` if locks are stale.\n", 
-            self.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("unknown")));
-        
+        recovery.push_str(&format!(
+            "3. Run `orch takeover --profile {}` if locks are stale.\n",
+            self.active_profile
+                .as_ref()
+                .map(|p| p.value.as_str())
+                .unwrap_or("unknown")
+        ));
+
         recovery
     }
 
     pub fn takeover_lock(&mut self, worktree: &Path, profile: &str, force: bool) -> Result<()> {
-        let lock_dir = worktree.join(".orchestrator/locks");
-        let lock_name = format!("{}.json", profile);
-        let lock_path = lock_dir.join(lock_name);
-        
+        let lock_path = Self::lock_path(worktree, worktree, profile);
+        let legacy_lock_path = Self::legacy_lock_path(worktree, profile);
+        let lock_path = if lock_path.exists() || !legacy_lock_path.exists() {
+            lock_path
+        } else {
+            legacy_lock_path
+        };
+
         if lock_path.exists() {
             let existing = Lock::load(&lock_path)?;
             if existing.is_live() && !force {
-                anyhow::bail!("Cannot takeover live lock for profile {} (PID: {}) without force", profile, existing.pid);
+                anyhow::bail!(
+                    "Cannot takeover live lock for profile {} (PID: {}) without force",
+                    profile,
+                    existing.pid
+                );
             }
         }
 
@@ -510,7 +558,7 @@ impl Session {
         let profile_dir = path.join(".orchestrator/profiles");
         fs::create_dir_all(lock_dir)?;
         fs::create_dir_all(profile_dir)?;
-        
+
         let mut session = Session::new();
         session.save(path.join(".orchestrator/session.json"))?;
         Ok(session)
@@ -520,25 +568,46 @@ impl Session {
         let mut status = String::new();
         status.push_str("\x1b[1;36m=== Orchestrator Session Status ===\x1b[0m\n");
         status.push_str(&format!("ID:     {}\n", self.session_id));
-        
+
         let status_color = match self.state_status {
             StateStatus::Running => "\x1b[32m",
             StateStatus::Crashed | StateStatus::Stuck => "\x1b[31m",
             StateStatus::Blocked => "\x1b[33m",
             _ => "\x1b[34m",
         };
-        status.push_str(&format!("Status: {}{:?}\x1b[0m\n", status_color, self.state_status));
+        status.push_str(&format!(
+            "Status: {}{:?}\x1b[0m\n",
+            status_color, self.state_status
+        ));
         status.push_str(&format!("Class:  {:?}\n", self.classification));
-        status.push_str(&format!("Active: \x1b[1m{}\x1b[0m\n", self.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("None")));
-        
-        let lock_dir = Path::new(".orchestrator/locks");
+        status.push_str(&format!(
+            "Active: \x1b[1m{}\x1b[0m\n",
+            self.active_profile
+                .as_ref()
+                .map(|p| p.value.as_str())
+                .unwrap_or("None")
+        ));
+
         if let Some(profile_prov) = &self.active_profile {
-            let lock_path = lock_dir.join(format!("{}.json", profile_prov.value));
+            let worktree = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let lock_path = Self::lock_path(Path::new("."), &worktree, &profile_prov.value);
+            let legacy_lock_path = Self::legacy_lock_path(Path::new("."), &profile_prov.value);
+            let lock_path = if lock_path.exists() || !legacy_lock_path.exists() {
+                lock_path
+            } else {
+                legacy_lock_path
+            };
             if let Ok(lock) = Lock::load(lock_path) {
                 if lock.is_live() {
-                    status.push_str(&format!("Lock:   \x1b[32mLIVE (PID: {})\x1b[0m\n", lock.pid));
+                    status.push_str(&format!(
+                        "Lock:   \x1b[32mLIVE (PID: {})\x1b[0m\n",
+                        lock.pid
+                    ));
                 } else {
-                    status.push_str(&format!("Lock:   \x1b[31mSTALE (Dead PID: {})\x1b[0m\n", lock.pid));
+                    status.push_str(&format!(
+                        "Lock:   \x1b[31mSTALE (Dead PID: {})\x1b[0m\n",
+                        lock.pid
+                    ));
                 }
             } else {
                 status.push_str("Lock:   None\n");
@@ -550,7 +619,7 @@ impl Session {
         } else if let Some(task) = &self.current_task {
             status.push_str(&format!("\n\x1b[1mTask:\x1b[0m {}\n", task.value));
         }
-        
+
         status
     }
 
@@ -563,7 +632,10 @@ impl Session {
                 if path.extension().and_then(|s| s.to_str()) == Some("json") {
                     if let Ok(lock) = Lock::load(&path) {
                         if !lock.is_live() {
-                            println!("  Removing stale lock: {:?}", path.file_name().unwrap_or_default());
+                            println!(
+                                "  Removing stale lock: {:?}",
+                                path.file_name().unwrap_or_default()
+                            );
                             fs::remove_file(path)?;
                         }
                     }
@@ -578,10 +650,13 @@ impl Session {
             fs::create_dir_all(&archive_dir)?;
             let now = Utc::now().format("%Y%m%d_%H%M%S").to_string();
             let archived_name = format!("HANDOFF_{}.md", now);
-            println!("  Archiving handoff to {:?}", archive_dir.join(&archived_name));
+            println!(
+                "  Archiving handoff to {:?}",
+                archive_dir.join(&archived_name)
+            );
             fs::rename(&handoff_path, archive_dir.join(archived_name))?;
         }
-        
+
         Ok(())
     }
 }
@@ -598,7 +673,7 @@ pub fn bootstrap_profile_from_source(source_dir: &Path, profile_path: &Path) -> 
     if !profile_path.exists() {
         fs::create_dir_all(profile_path)?;
     }
-    
+
     let files = [
         "google_accounts.json",
         "oauth_creds.json",
@@ -614,11 +689,15 @@ pub fn bootstrap_profile_from_source(source_dir: &Path, profile_path: &Path) -> 
             fs::copy(src, dst)?;
         }
     }
-    
+
     Ok(())
 }
 
-pub fn prepare_launch_command(cli: &str, profile_path: &Path, args: &[String]) -> std::process::Command {
+pub fn prepare_launch_command(
+    cli: &str,
+    profile_path: &Path,
+    args: &[String],
+) -> std::process::Command {
     let mut cmd = std::process::Command::new(cli);
     cmd.env("HOME", profile_path);
     cmd.args(args);
@@ -677,7 +756,7 @@ fn probe_locks() -> Result<()> {
         // Just in case PID 999999 is actually alive, but unlikely
         #[cfg(unix)]
         {
-            use libc::{kill, ESRCH};
+            use libc::{ESRCH, kill};
             let res = unsafe { kill(stale_pid as i32, 0) };
             if res != 0 && std::io::Error::last_os_error().raw_os_error() == Some(ESRCH) {
                 println!("❌");
@@ -733,12 +812,13 @@ fn probe_sync() -> Result<()> {
 fn probe_isolation() -> Result<()> {
     print!("  - Profile Isolation Probe... ");
     // Logic: Verify we can create a temporary HOME and it doesn't affect current environment
-    let temp_home = std::env::temp_dir().join(format!("orch-probe-isolation-{}", uuid::Uuid::new_v4()));
+    let temp_home =
+        std::env::temp_dir().join(format!("orch-probe-isolation-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&temp_home)?;
-    
+
     let _original_home = std::env::var_os("HOME");
-    
-    // In Rust, std::env::set_var affects the current process. 
+
+    // In Rust, std::env::set_var affects the current process.
     // To truly test isolation, we'd need to spawn a child process with a different HOME.
     let status = std::process::Command::new("sh")
         .arg("-c")
@@ -768,8 +848,10 @@ pub fn run_probes() -> Result<()> {
 }
 
 pub fn create_worktree(base_path: &Path, session_id: &str, profile: &str) -> Result<PathBuf> {
-    let wt_path = base_path.join(".worktrees").join(format!("session-{}-{}", session_id, profile));
-    
+    let wt_path = base_path
+        .join(".worktrees")
+        .join(format!("session-{}-{}", session_id, profile));
+
     if !wt_path.exists() {
         let status = std::process::Command::new("git")
             .arg("worktree")
@@ -780,12 +862,12 @@ pub fn create_worktree(base_path: &Path, session_id: &str, profile: &str) -> Res
             .arg("HEAD")
             .status()
             .context("Failed to execute git worktree add")?;
-        
+
         if !status.success() {
             anyhow::bail!("git worktree add failed with status: {}", status);
         }
     }
-    
+
     Ok(wt_path)
 }
 
@@ -796,15 +878,15 @@ pub fn check_approval(approved_by_flag: bool, message: &str) -> Result<()> {
     if approved_by_flag {
         return Ok(());
     }
-    
+
     println!("⚠️  SECURITY GATE: {}", message);
     print!("Do you approve this action? [y/N]: ");
     use std::io::Write;
     std::io::stdout().flush()?;
-    
+
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
-    
+
     if input.trim().to_lowercase() == "y" {
         Ok(())
     } else {
@@ -851,7 +933,13 @@ fn main() -> Result<()> {
     let session_path = Path::new(".orchestrator/session.json");
 
     match cli.command {
-        Commands::Launch { profile, worktree, cli: cli_bin, new_worktree, args } => {
+        Commands::Launch {
+            profile,
+            worktree,
+            cli: cli_bin,
+            new_worktree,
+            args,
+        } => {
             let wt = if new_worktree {
                 let base = std::env::current_dir()?;
                 // We need a session_id. If session.json exists, use it. Otherwise new.
@@ -864,7 +952,7 @@ fn main() -> Result<()> {
             } else {
                 worktree.unwrap_or(std::env::current_dir()?)
             };
-            
+
             let session_path = wt.join(".orchestrator/session.json");
 
             run_probes()?;
@@ -876,26 +964,29 @@ fn main() -> Result<()> {
 
             println!("🚀 Launching {} in profile: {}", cli_bin, profile);
             let mut session = Session::load(&session_path)?;
-            
+
             let profiles_dir = wt.join(".orchestrator/profiles");
             let profile_root = profiles_dir.join(&profile);
-            
+
             // Register profile if new
             if !session.profiles.contains_key(&profile) {
-                session.profiles.insert(profile.clone(), Profile {
-                    name: profile.clone(),
-                    provider: "google".to_string(),
-                    root: profile_root.clone(),
-                    role: None,
-                    default_classification: DataClassification::Internal,
-                });
+                session.profiles.insert(
+                    profile.clone(),
+                    Profile {
+                        name: profile.clone(),
+                        provider: "google".to_string(),
+                        root: profile_root.clone(),
+                        role: None,
+                        default_classification: DataClassification::Internal,
+                    },
+                );
             }
 
             session.acquire_lock(wt.clone(), &profile)?;
             session.set_active_profile(&profile, "user");
             session.state_status = StateStatus::Running;
             session.save(&session_path)?;
-            
+
             // Bootstrap
             bootstrap_profile(&profile_root)?;
 
@@ -904,14 +995,16 @@ fn main() -> Result<()> {
             println!("Handoff generated at {:?}", handoff_path);
 
             let mut cmd = prepare_launch_command(&cli_bin, &profile_root, &args);
-            
-            cmd.stdin(std::process::Stdio::inherit())
-               .stdout(std::process::Stdio::inherit())
-               .stderr(std::process::Stdio::inherit());
 
-            let mut child = cmd.spawn().with_context(|| format!("Failed to spawn CLI: {}", cli_bin))?;
+            cmd.stdin(std::process::Stdio::inherit())
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit());
+
+            let mut child = cmd
+                .spawn()
+                .with_context(|| format!("Failed to spawn CLI: {}", cli_bin))?;
             let status = child.wait().context("Failed to wait for CLI process")?;
-            
+
             if !status.success() {
                 session.state_status = StateStatus::Crashed;
                 session.save(&session_path)?;
@@ -934,7 +1027,11 @@ fn main() -> Result<()> {
             session.state_status = StateStatus::Paused;
             session.state.verified_facts.append(Provenance::new(
                 message,
-                session.active_profile.as_ref().map(|p| p.value.as_str()).unwrap_or("unknown"),
+                session
+                    .active_profile
+                    .as_ref()
+                    .map(|p| p.value.as_str())
+                    .unwrap_or("unknown"),
                 &session.session_id,
                 ProvenanceStatus::Verified,
             ));
@@ -942,30 +1039,28 @@ fn main() -> Result<()> {
             session.save(session_path)?;
             println!("Session frozen and saved.");
         }
-        Commands::Governance { subcommand } => {
-            match subcommand {
-                GovernanceCommands::SetClass { level } => {
-                    let mut session = Session::load(session_path)?;
-                    let class = match level.to_lowercase().as_str() {
-                        "public" => DataClassification::Public,
-                        "internal" => DataClassification::Internal,
-                        "confidential" => DataClassification::Confidential,
-                        "secret" => DataClassification::Secret,
-                        _ => anyhow::bail!("Unknown classification level: {}", level),
-                    };
-                    session.classification = class;
-                    session.touch();
-                    session.save(session_path)?;
-                    println!("Data classification set to: {:?}", session.classification);
-                }
-                GovernanceCommands::Status => {
-                    let session = Session::load(session_path)?;
-                    println!("Current Governance Status:");
-                    println!("  Classification: {:?}", session.classification);
-                    println!("  Session ID: {}", session.session_id);
-                }
+        Commands::Governance { subcommand } => match subcommand {
+            GovernanceCommands::SetClass { level } => {
+                let mut session = Session::load(session_path)?;
+                let class = match level.to_lowercase().as_str() {
+                    "public" => DataClassification::Public,
+                    "internal" => DataClassification::Internal,
+                    "confidential" => DataClassification::Confidential,
+                    "secret" => DataClassification::Secret,
+                    _ => anyhow::bail!("Unknown classification level: {}", level),
+                };
+                session.classification = class;
+                session.touch();
+                session.save(session_path)?;
+                println!("Data classification set to: {:?}", session.classification);
             }
-        }
+            GovernanceCommands::Status => {
+                let session = Session::load(session_path)?;
+                println!("Current Governance Status:");
+                println!("  Classification: {:?}", session.classification);
+                println!("  Session ID: {}", session.session_id);
+            }
+        },
         Commands::Takeover { profile } => {
             println!("🔄 Taking over profile: {}", profile);
             let mut session = if session_path.exists() {
@@ -983,20 +1078,23 @@ fn main() -> Result<()> {
         Commands::Switch { profile } => {
             println!("🔄 Switching to profile: {}", profile);
             let mut session = Session::load(session_path)?;
-            
+
             let wt = std::env::current_dir()?;
             let profile_root = wt.join(".orchestrator/profiles").join(&profile);
-            
+
             if !session.profiles.contains_key(&profile) {
-                session.profiles.insert(profile.clone(), Profile {
-                    name: profile.clone(),
-                    provider: "google".to_string(),
-                    root: profile_root.clone(),
-                    role: None,
-                    default_classification: DataClassification::Internal,
-                });
+                session.profiles.insert(
+                    profile.clone(),
+                    Profile {
+                        name: profile.clone(),
+                        provider: "google".to_string(),
+                        root: profile_root.clone(),
+                        role: None,
+                        default_classification: DataClassification::Internal,
+                    },
+                );
             }
-            
+
             session.set_active_profile(&profile, "user");
             session.save(session_path)?;
             println!("Active profile switched to: {}", profile);
@@ -1011,12 +1109,12 @@ fn main() -> Result<()> {
         Commands::Postmortem => {
             println!("📝 Generating post-mortem report...");
             let session = Session::load(session_path)?;
-            
+
             let mut report = String::new();
             report.push_str("# Post-Mortem Analysis\n\n");
             report.push_str(&format!("**Session ID**: {}\n", session.session_id));
             report.push_str(&format!("**Final Status**: {:?}\n\n", session.state_status));
-            
+
             report.push_str("## Collate Facts vs. Blockers\n");
             report.push_str("### Verified Facts\n");
             for fact in &session.state.verified_facts.items {
@@ -1027,7 +1125,7 @@ fn main() -> Result<()> {
                 };
                 report.push_str(&format!("- {}\n", val));
             }
-            
+
             report.push_str("\n### Blockers & Issues\n");
             for blocker in &session.state.blockers.items {
                 let val = if blocker.classification == Some(DataClassification::Secret) {
@@ -1037,23 +1135,30 @@ fn main() -> Result<()> {
                 };
                 report.push_str(&format!("- {}\n", val));
             }
-            
+
             let report_dir = Path::new("brain/post-mortems");
             fs::create_dir_all(report_dir)?;
             let report_path = report_dir.join(format!("pm-{}.md", session.session_id));
             fs::write(&report_path, &report)?;
             println!("Local post-mortem report generated at {:?}", report_path);
-            
+
             if session.classification == DataClassification::Secret {
                 println!("🤫 Secret session: Global post-mortem copying disabled.");
                 return Ok(());
             }
 
             if let Ok(global_path) = get_global_system_path() {
-                check_approval(cli.approve, &format!("Copy post-mortem report to global storage at {:?}", global_path))?;
+                check_approval(
+                    cli.approve,
+                    &format!(
+                        "Copy post-mortem report to global storage at {:?}",
+                        global_path
+                    ),
+                )?;
                 let global_pm_dir = global_path.join("postmortems");
                 if fs::create_dir_all(&global_pm_dir).is_ok() {
-                    let global_pm_path = global_pm_dir.join(format!("pm-{}.md", session.session_id));
+                    let global_pm_path =
+                        global_pm_dir.join(format!("pm-{}.md", session.session_id));
                     fs::write(&global_pm_path, &report)?;
                     println!("Global post-mortem report copied to {:?}", global_pm_path);
                 }
@@ -1062,7 +1167,7 @@ fn main() -> Result<()> {
         Commands::Charter { subcommand } => {
             let global_path = get_global_system_path()?;
             let charters_dir = global_path.join("charters");
-            
+
             match subcommand {
                 CharterCommands::List => {
                     println!("Agent Charters:");
@@ -1090,12 +1195,17 @@ fn main() -> Result<()> {
                     let charter: Charter = serde_json::from_str(&content)?;
                     println!("Charter: {}", charter.name);
                     println!("  Primary Role: {}", charter.primary_role);
-                    println!("  Secondary Capabilities: {:?}", charter.secondary_capabilities);
+                    println!(
+                        "  Secondary Capabilities: {:?}",
+                        charter.secondary_capabilities
+                    );
                     println!("  Constraints: {:?}", charter.constraints);
                 }
             }
         }
-        Commands::Sign { session: session_id } => {
+        Commands::Sign {
+            session: session_id,
+        } => {
             let id = session_id.unwrap_or_else(|| {
                 if let Ok(session) = Session::load(session_path) {
                     session.session_id
@@ -1103,14 +1213,17 @@ fn main() -> Result<()> {
                     "unknown".to_string()
                 }
             });
-            println!("🖋️ Signing session: {} (Stub - cryptographic readiness)", id);
+            println!(
+                "🖋️ Signing session: {} (Stub - cryptographic readiness)",
+                id
+            );
             println!("Provenance signature field ready for integration.");
         }
         Commands::Init { global } => {
             println!("🏗️ Initializing orchestrator...");
             let worktree = std::env::current_dir()?;
             Session::init(&worktree)?;
-            
+
             if global {
                 let global_path = get_global_system_path()?;
                 let charters_dir = global_path.join("charters");
@@ -1122,15 +1235,15 @@ fn main() -> Result<()> {
         Commands::Resume { profile } => {
             println!("⏯️ Resuming session...");
             let mut session = Session::load(session_path)?;
-            
+
             let profile_name = match profile {
                 Some(p) => p,
-                None => {
-                    match &session.active_profile {
-                        Some(ap) => ap.value.clone(),
-                        None => anyhow::bail!("No active profile found. Use `launch --profile <name>` to start a session or specify `--profile` with resume."),
-                    }
-                }
+                None => match &session.active_profile {
+                    Some(ap) => ap.value.clone(),
+                    None => anyhow::bail!(
+                        "No active profile found. Use `launch --profile <name>` to start a session or specify `--profile` with resume."
+                    ),
+                },
             };
 
             // In a real implementation, we'd verify lock status here
@@ -1138,33 +1251,33 @@ fn main() -> Result<()> {
             session.state_status = StateStatus::Running;
             session.touch();
             session.save(session_path)?;
-            
+
             // Regenerate HANDOFF.md
             let wt = std::env::current_dir()?;
             let handoff_path = wt.join(".orchestrator/HANDOFF.md");
             fs::write(&handoff_path, session.generate_handoff())?;
             println!("Handoff regenerated at {:?}", handoff_path);
-            
+
             println!("Session resumed with profile: {}", profile_name);
         }
         Commands::Status => {
             let session = Session::load(session_path)?;
             println!("{}", session.status());
         }
-        Commands::Profiles { subcommand } => {
-            match subcommand {
-                ProfileCommands::List => {
-                    let session = Session::load(session_path)?;
-                    println!("Registered Profiles:");
-                    for name in session.profiles.keys() {
-                        let active = if let Some(ap) = &session.active_profile {
-                            if ap.value == *name { " [Active]" } else { "" }
-                        } else { "" };
-                        println!("  - {}{}", name, active);
-                    }
+        Commands::Profiles { subcommand } => match subcommand {
+            ProfileCommands::List => {
+                let session = Session::load(session_path)?;
+                println!("Registered Profiles:");
+                for name in session.profiles.keys() {
+                    let active = if let Some(ap) = &session.active_profile {
+                        if ap.value == *name { " [Active]" } else { "" }
+                    } else {
+                        ""
+                    };
+                    println!("  - {}{}", name, active);
                 }
             }
-        }
+        },
         Commands::Cleanup => {
             println!("🧹 Cleaning up stale locks...");
             let worktree = std::env::current_dir()?;
