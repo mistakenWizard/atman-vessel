@@ -927,17 +927,17 @@ pub fn run_probes() -> Result<()> {
     Ok(())
 }
 
-pub fn create_worktree(base_path: &Path, session_id: &str, profile: &str) -> Result<PathBuf> {
+pub fn create_worktree(base_path: &Path, _session_id: &str, slug: &str) -> Result<PathBuf> {
     let wt_path = base_path
         .join(".worktrees")
-        .join(format!("session-{}-{}", session_id, profile));
+        .join(format!("task-{}", slug));
 
     if !wt_path.exists() {
         let status = std::process::Command::new("git")
             .arg("worktree")
             .arg("add")
             .arg("-b")
-            .arg(format!("session-{}", session_id))
+            .arg(format!("task-{}", slug))
             .arg(&wt_path)
             .arg("HEAD")
             .status()
@@ -1146,9 +1146,7 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                             let session_id = if session_path.exists() {
                                 Session::load(session_path)?.session_id
                             } else {
-                                let id = uuid::Uuid::new_v4().to_string();
-                                Session::init(&root)?;
-                                id
+                                uuid::Uuid::new_v4().to_string()
                             };
 
                             let wt_path = create_worktree(&root, &session_id, s)?;
@@ -1160,6 +1158,9 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                             })?;
 
                             let session_path = wt_path.join(".orchestrator/session.json");
+                            if !session_path.exists() {
+                                Session::init(&wt_path)?;
+                            }
                             let mut session = Session::load(&session_path)?;
                             let profile_root = wt_path.join(".orchestrator/profiles").join(profile);
                             
