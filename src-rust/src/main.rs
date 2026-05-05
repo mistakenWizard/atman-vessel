@@ -780,6 +780,7 @@ pub fn prepare_launch_command(
 ) -> std::process::Command {
     let mut cmd = std::process::Command::new(cli);
     cmd.env("HOME", profile_path);
+    cmd.env("GEMINI_CLI_TRUST_WORKSPACE", "true");
     cmd.args(args);
     cmd
 }
@@ -927,17 +928,74 @@ pub fn run_probes() -> Result<()> {
     Ok(())
 }
 
-pub fn create_worktree(base_path: &Path, _session_id: &str, slug: &str) -> Result<PathBuf> {
+pub fn validate_slug(slug: &str) -> Result<()> {
+    if slug.is_empty() {
+        anyhow::bail!("Slug cannot be empty");
+    }
+    if !slug.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        anyhow::bail!("Slug contains invalid characters. Use only alphanumeric, '-' or '_'.");
+    }
+    Ok(())
+}
+
+pub fn start_task_core(root: &Path, slug: &str, profile: &str) -> Result<PathBuf> {
+    validate_slug(slug)?;
+
+    // 1. Initialize session or use existing
+    let session_path = root.join(".orchestrator/session.json");
+    let session_id = if session_path.exists() {
+        Session::load(&session_path)?.session_id
+    } else {
+        let id = uuid::Uuid::new_v4().to_string();
+        Session::init(root)?;
+        id
+    };
+
+    // 2. Run probes
+    run_probes()?;
+
+    // 3. Create Worktree
+    let wt_path = create_worktree(root, &session_id, slug)?;
+    
+    // 4. Update Board
+    let board = Board::new(root);
+    board.update_task(&Task {
+        slug: slug.to_string(),
+        agent: profile.to_string(),
+        status: "In Progress".to_string(),
+        path: wt_path.to_string_lossy().to_string(),
+    })?;
+
+    // 5. Initialize/Load session in worktree
+    let wt_session_path = wt_path.join(".orchestrator/session.json");
+    if !wt_session_path.exists() {
+        Session::init(&wt_path)?;
+    }
+    let mut session = Session::load(&wt_session_path)?;
+    let profile_root = wt_path.join(".orchestrator/profiles").join(profile);
+    
+    bootstrap_profile(&profile_root)?;
+    session.acquire_lock(wt_path.clone(), profile)?;
+    session.set_active_profile(profile, "task-start");
+    session.save(&wt_session_path)?;
+
+    let handoff_path = wt_path.join(".orchestrator/HANDOFF.md");
+    fs::write(&handoff_path, session.generate_handoff())?;
+
+    Ok(wt_path)
+}
+
+pub fn create_worktree(base_path: &Path, session_id: &str, slug: &str) -> Result<PathBuf> {
     let wt_path = base_path
         .join(".worktrees")
-        .join(format!("task-{}", slug));
+        .join(format!("session-{}-{}", session_id, slug));
 
     if !wt_path.exists() {
         let status = std::process::Command::new("git")
             .arg("worktree")
             .arg("add")
             .arg("-b")
-            .arg(format!("task-{}", slug))
+            .arg(format!("task-{}-{}", session_id, slug))
             .arg(&wt_path)
             .arg("HEAD")
             .status()
@@ -1139,49 +1197,21 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                             Ok(d) => d,
                             Err(e) => return McpResponse { jsonrpc: "2.0".to_string(), result: None, error: Some(McpError { code: -32000, message: format!("IO Error: {}", e) }), id: req.id },
                         };
-                        let board = Board::new(&root);
-                        let session_path = Path::new(".orchestrator/session.json");
 
-                        match (|| -> Result<String> {
-                            let session_id = if session_path.exists() {
-                                Session::load(session_path)?.session_id
-                            } else {
-                                uuid::Uuid::new_v4().to_string()
-                            };
+                        match start_task_core(&root, s, profile) {
+                            Ok(wt_path) => {
+                                let wt_session_path = wt_path.join(".orchestrator/session.json");
+                                let profile_root = wt_path.join(".orchestrator/profiles").join(profile);
 
-                            let wt_path = create_worktree(&root, &session_id, s)?;
-                            board.update_task(&Task {
-                                slug: s.to_string(),
-                                agent: profile.to_string(),
-                                status: "In Progress".to_string(),
-                                path: wt_path.to_string_lossy().to_string(),
-                            })?;
+                                // We spawn in background for MCP to not block the server indefinitely
+                                tokio::task::spawn_blocking(move || {
+                                    if let Ok(mut session_inner) = Session::load(&wt_session_path) {
+                                        let _ = run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session_inner);
+                                    }
+                                });
 
-                            let session_path = wt_path.join(".orchestrator/session.json");
-                            if !session_path.exists() {
-                                Session::init(&wt_path)?;
+                                Some(serde_json::json!({ "content": [{ "type": "text", "text": format!("Task {} started and agent {} launched in worktree {:?}", s, profile, wt_path) }] }))
                             }
-                            let mut session = Session::load(&session_path)?;
-                            let profile_root = wt_path.join(".orchestrator/profiles").join(profile);
-                            
-                            bootstrap_profile(&profile_root)?;
-                            session.acquire_lock(wt_path.clone(), profile)?;
-                            session.set_active_profile(profile, "mcp-start-task");
-                            session.save(&session_path)?;
-
-                            let handoff_path = wt_path.join(".orchestrator/HANDOFF.md");
-                            fs::write(&handoff_path, session.generate_handoff())?;
-
-                            // We spawn in background for MCP to not block the server indefinitely
-                            let profile_root_clone = profile_root.clone();
-                            tokio::task::spawn_blocking(move || {
-                                let mut session_inner = Session::load(&session_path).unwrap();
-                                let _ = run_cli("gemini", &profile_root_clone, &[], &session_path, &mut session_inner);
-                            });
-
-                            Ok(format!("Task {} started and agent {} launched in worktree {:?}", s, profile, wt_path))
-                        })() {
-                            Ok(msg) => Some(serde_json::json!({ "content": [{ "type": "text", "text": msg }] })),
                             Err(e) => Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Error: {}", e) }] })),
                         }
                     } else {
@@ -1210,12 +1240,15 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                                 }
                                 session.set_active_profile(p, "mcp-tool");
                                 session.state_status = StateStatus::Running;
+                                
                                 if let Err(e) = session.save(session_path) {
                                     Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Save Error: {}", e) }] }))
                                 } else {
-                                    // Spawning is tricky in a tool call since it blocks the server.
-                                    // But MCP tools are expected to return results.
-                                    // For now, we update state. The agent can then use 'resume' or we could spawn background.
+                                    // Bootstrap and regenerate handoff
+                                    let _ = bootstrap_profile(&profile_root);
+                                    let handoff_path = wt.join(".orchestrator/HANDOFF.md");
+                                    let _ = fs::write(&handoff_path, session.generate_handoff());
+
                                     Some(serde_json::json!({ "content": [{ "type": "text", "text": format!("Switched to profile {}. Handoff regenerated.", p) }] }))
                                 }
                             }
@@ -1223,6 +1256,36 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                         }
                     } else {
                         Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Missing 'profile' argument" }] }))
+                    }
+                }
+                Some("freeze_session") => {
+                    let message = arguments.and_then(|a| a.get("message")).and_then(|m| m.as_str());
+                    if let Some(msg) = message {
+                        let session_path = Path::new(".orchestrator/session.json");
+                        match Session::load(session_path) {
+                            Ok(mut session) => {
+                                session.state_status = StateStatus::Paused;
+                                session.state.verified_facts.append(Provenance::new(
+                                    msg.to_string(),
+                                    session
+                                        .active_profile
+                                        .as_ref()
+                                        .map(|p| p.value.as_str())
+                                        .unwrap_or("unknown"),
+                                    &session.session_id,
+                                    ProvenanceStatus::Verified,
+                                ));
+                                session.touch();
+                                if let Err(e) = session.save(session_path) {
+                                    Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Save Error: {}", e) }] }))
+                                } else {
+                                    Some(serde_json::json!({ "content": [{ "type": "text", "text": format!("Session frozen: {}", msg) }] }))
+                                }
+                            }
+                            Err(e) => Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Load Error: {}", e) }] })),
+                        }
+                    } else {
+                        Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Missing 'message' argument" }] }))
                     }
                 }
                 _ => Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Unknown tool: {:?}", tool_name) }] })),
@@ -1246,8 +1309,32 @@ async fn run_mcp_server() -> Result<()> {
 
     for line in reader.lines() {
         let line = line?;
-        if let Ok(req) = serde_json::from_str::<McpRequest>(&line) {
-            let resp = handle_mcp_request(req).await;
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let resp = match serde_json::from_str::<McpRequest>(&line) {
+            Ok(req) => {
+                let is_notification = req.id.is_none();
+                let resp = handle_mcp_request(req).await;
+                if is_notification {
+                    None
+                } else {
+                    Some(resp)
+                }
+            }
+            Err(_) => Some(McpResponse {
+                jsonrpc: "2.0".to_string(),
+                result: None,
+                error: Some(McpError {
+                    code: -32700,
+                    message: "Parse error".to_string(),
+                }),
+                id: None,
+            }),
+        };
+
+        if let Some(resp) = resp {
             let resp_json = serde_json::to_string(&resp)?;
             stdout.write_all(resp_json.as_bytes())?;
             stdout.write_all(b"\n")?;
@@ -1266,51 +1353,22 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Task { subcommand } => {
             let root = std::env::current_dir()?;
-            let board = Board::new(&root);
 
             match subcommand {
                 TaskCommands::Start { slug, profile } => {
                     println!("🚀 Starting task: {}", slug);
-                    
-                    // 1. Initialize session or use existing
-                    let session_id = if session_path.exists() {
-                        Session::load(session_path)?.session_id
-                    } else {
-                        let id = uuid::Uuid::new_v4().to_string();
-                        Session::init(&root)?;
-                        id
-                    };
-
-                    // 2. Create Worktree
-                    let wt_path = create_worktree(&root, &session_id, &slug)?;
-                    
-                    // 3. Update Board
-                    board.update_task(&Task {
-                        slug: slug.clone(),
-                        agent: profile.clone(),
-                        status: "In Progress".to_string(),
-                        path: wt_path.to_string_lossy().to_string(),
-                    })?;
-
+                    let wt_path = start_task_core(&root, &slug, &profile)?;
                     println!("✅ Worktree created at {:?}", wt_path);
                     println!("🚀 Launching agent {}...", profile);
 
-                    // 4. Launch (Reuse Launch logic internally)
-                    let session_path = wt_path.join(".orchestrator/session.json");
-                    let mut session = Session::load(&session_path)?;
+                    let wt_session_path = wt_path.join(".orchestrator/session.json");
+                    let mut session = Session::load(&wt_session_path)?;
                     let profile_root = wt_path.join(".orchestrator/profiles").join(&profile);
-                    
-                    bootstrap_profile(&profile_root)?;
-                    session.acquire_lock(wt_path.clone(), &profile)?;
-                    session.set_active_profile(&profile, "task-start");
-                    session.save(&session_path)?;
 
-                    let handoff_path = wt_path.join(".orchestrator/HANDOFF.md");
-                    fs::write(&handoff_path, session.generate_handoff())?;
-
-                    run_cli("gemini", &profile_root, &[], &session_path, &mut session)?;
+                    run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session)?;
                 }
                 TaskCommands::List => {
+                    let board = Board::new(&root);
                     if board.path.exists() {
                         let content = fs::read_to_string(&board.path)?;
                         println!("{}", content);
@@ -1319,6 +1377,7 @@ async fn main() -> Result<()> {
                     }
                 }
                 TaskCommands::Done { slug } => {
+                    let board = Board::new(&root);
                     board.update_task(&Task {
                         slug,
                         agent: "None".to_string(),
