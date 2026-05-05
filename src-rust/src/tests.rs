@@ -779,3 +779,56 @@ async fn test_mcp_handler_status() {
     std::env::set_current_dir(current_dir).unwrap();
     fs::remove_dir_all(test_dir).ok();
 }
+
+#[test]
+fn test_slug_validation() {
+    assert!(validate_slug("valid-slug").is_ok());
+    assert!(validate_slug("valid_slug_123").is_ok());
+    assert!(validate_slug("").is_err());
+    assert!(validate_slug("invalid slug").is_err());
+    assert!(validate_slug("../etc/passwd").is_err());
+    assert!(validate_slug("slug!").is_err());
+}
+
+#[tokio::test]
+async fn test_mcp_unknown_method() {
+    let req = McpRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "unknown/method".to_string(),
+        params: None,
+        id: Some(serde_json::json!(1)),
+    };
+    
+    let resp = handle_mcp_request(req).await;
+    assert!(resp.error.is_some());
+    assert_eq!(resp.error.unwrap().code, -32601);
+}
+
+#[tokio::test]
+async fn test_mcp_invalid_slug_start_task() {
+    let test_dir = setup_test_dir("mcp_invalid_slug");
+    let current_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&test_dir).unwrap();
+
+    let req = McpRequest {
+        jsonrpc: "2.0".to_string(),
+        method: "tools/call".to_string(),
+        params: Some(serde_json::json!({
+            "name": "start_task",
+            "arguments": {
+                "slug": "../invalid-path",
+                "profile": "chief"
+            }
+        })),
+        id: Some(serde_json::json!(1)),
+    };
+
+    let resp = handle_mcp_request(req).await;
+    assert!(resp.result.is_some());
+    let result = resp.result.unwrap();
+    assert!(result["isError"].as_bool().unwrap());
+    assert!(result["content"][0]["text"].as_str().unwrap().contains("invalid characters"));
+
+    std::env::set_current_dir(current_dir).unwrap();
+    fs::remove_dir_all(test_dir).ok();
+}
