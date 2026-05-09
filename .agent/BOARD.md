@@ -4,6 +4,9 @@
 | :--- | :--- | :--- | :--- |
 | `phase-1-probe-harness` | Gemini-CLI | Done | |
 | `mcp-task-system` | Gemini-CLI | Done | |
-| `mcp-verification-test` | builder | In Progress | /mnt/e/atman-vessel/.worktrees/session-45bf2c09-e374-4d0d-bdb8-591f5c564820-mcp-verification-test |
-| `mcp-final-task-verification` | builder | In Progress | /mnt/e/atman-vessel/.worktrees/task-mcp-final-task-verification |
 | `mcp-core-deep-review` | reviewer | Done | |
+| `manager-handover-demo` | builder | Cancelled (Stale) | |
+| `phase-9-cleanup` | chief | Done | |
+| `v1.4.0-release` | Gemini-CLI | Done | |
+| `global-integration` | gayatri | In Progress | /mnt/e/atman-vessel/.worktrees/session-7ab09d01-c9cc-4e62-b098-96c6d8abc217-global-integration |
+| `audit-instructions` | mistakenWizard | In Progress | /mnt/e/atman-vessel/.worktrees/session-7ab09d01-c9cc-4e62-b098-96c6d8abc217-audit-instructions |
