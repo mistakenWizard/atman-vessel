@@ -1,34 +1,52 @@
-# AtmanVessel Project Standards (Task-Centric)
+# AtmanVessel Project Standards (v1.5.0)
 
-## Multi-Agent Coordination
-**CRITICAL:** This project is shared with other agents. You MUST use Task-Based Worktrees.
+## 1. Core Architecture: Soul & Vessel
+AtmanVessel is a deterministic orchestration framework that treats AI models as disposable **Vessels** while maintaining a persistent **Soul** (Project State).
 
-### Execution Flow:
-1. **Claim Task**: Run `task start <slug>` in the root directory.
-2. **Switch Context**: `cd` to the task-specific directory (e.g., `E:\atman-vessel-task-xyz`).
-3. **Work**: Perform implementation and testing in the isolated worktree.
-4. **Pause/Handoff**: Write to `.agent/handoffs/<slug>.md` and run `task handoff <slug>`.
+### Directory Map:
+- `src-rust/`: Orchestrator Core (Rust 2024).
+- `.orchestrator/`: Runtime state (session.json, locks, profiles). **DO NOT COMMIT.**
+- `brain/`: Persistent intelligence (plans, post-mortems).
+- `.agent/`: Coordination artifacts (BOARD.md, handoffs/).
+- `scripts/`: Legacy shell probes and task shims.
+
+### Documentation Index:
+- [AGENT_GUIDE.md](AGENT_GUIDE.md): Operational standards for AI agents.
+- [MCP_GUIDE.md](MCP_GUIDE.md): Technical reference for the MCP server.
+- [CLI_GUIDE.md](CLI_GUIDE.md): Detailed command reference.
+- [BOOTSTRAP.md](BOOTSTRAP.md): Universal guide for cross-repo integration.
 
 ---
 
-## Core Mandate: Deterministic Continuity
-Every action taken in this repository must prioritize **Task Continuity** and **Context Integrity**.
+## 2. Multi-Agent Coordination (MCP)
+**CRITICAL:** This project uses an MCP-based "Manager/Specialist" model.
+- **The Manager**: Coordinates work via the MCP server (`orch mcp`).
+- **Specialists**: Spawned in isolated git worktrees.
 
-### Operational Standards:
-1. **State Persistence**: All task progress must be mirrored in `.orchestrator/session.json`.
-2. **Provenance**: Every update to the soul must include `source`, `session_id`, and `timestamp`.
-3. **Isolation**: Always use `orch.sh` for profile-level execution to ensure identity isolation.
-4. **Handoffs**: Before switching vessels, update `HANDOFF.md` with the "Mental Map" of the task.
+### Execution Workflow:
+1. **Initialize**: `orch init` (Scaffolds local state).
+2. **Start Task**: `orch task start <slug>` (Creates worktree & launches agent).
+3. **Worktree Isolation**: Perform all implementation/testing inside the `.worktrees/task-<slug>/` directory.
 
-## Recovery Protocol
-In the event of a crash or stall:
-1. Snapshot current git diff and filesystem status.
-2. Generate `RECOVERY.md`.
-3. Assign a takeover profile using the "Clone & Verify" rule.
+---
 
-## Prototyping Guardrails
-- **HOME Redirection**: Treat profile isolation as an experimental prototype requiring a probe harness.
-- **Bootstrapping**: Manual config copies must be verified for CLI version compatibility.
+## 3. Engineering Standards (Rust Core)
+- **Toolchain**: Rust 1.80+ (edition 2024).
+- **Build**: `orch status` (Auto-builds) or `cd src-rust && cargo build`.
+- **Test**: `cd src-rust && cargo test` (Mandatory before PRs).
+- **Style**: Standard `cargo fmt`. Avoid unsafe code.
 
-## Planning
-All plans, post-mortems, and architectural decisions must be stored in the `brain/` directory.
+---
+
+## 4. Operational "YOLO" Mode
+All agent launches must be **Non-Interactive** and **Autonomous**.
+- **Env Var**: `GEMINI_CLI_TRUST_WORKSPACE=true` is required for all automated operations.
+- **Global Command**: Use `orch` (installed to `~/.local/bin/orch`) for all operations.
+- **Timeout**: All autonomous operations have a **strict 60-second timeout**. Agents must checkpoint state frequently.
+
+---
+
+## 5. Multi-Account Identity
+To rotate identities and bypass rate limits, use the named fleet:
+1. `orch launch --profile <name> gemini -- -p "..."`
+2. Authenticated Profiles: `gayatri`, `gvklive`, `hilarioushabit`, `hollowhistory`, `hypnotichallway`, `mistakenWizard`.

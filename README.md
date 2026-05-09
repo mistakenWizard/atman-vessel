@@ -1,24 +1,25 @@
 # AtmanVessel: The Deterministic AI Orchestrator
 
 ## Mission
-AtmanVessel is a local AI orchestration framework designed for **Deterministic Session Resumption**. It treats AI models as disposable specialized agents (**Vessels**) while maintaining a persistent, project-local "Soul" (**Context**).
+AtmanVessel is a local AI orchestration framework designed for **Deterministic Session Resumption**. It treats AI models as disposable specialized agents (**Vessels**) while maintaining a persistent, project-local "Soul" (Context).
 
-## Core Concepts
-- **Soul**: Durable, provenance-aware canonical state (`session.json`).
-- **Voice**: Ephemeral rehydration artifacts (`HANDOFF.md`, `RECOVERY.md`).
-- **Vessel**: Isolated execution environments (Profiles) for specific roles.
+## Key Features
+- **Multi-Account Rotation**: Effortlessly switch between 6+ Gemini identities to bypass rate limits.
+- **Identity Isolation**: Process-level environment redirection prevents authentication "bleeding."
+- **MCP Tool Support**: A built-in Model Context Protocol server for agent-to-agent delegation.
+- **Provenance Aware**: Every state update is tracked with source and timestamp metadata.
+- **Global Integration**: One-command access via the global `orch` CLI.
 
-## Project Structure
-- `.agent/workflows/`: Strategic and operational plans.
-- `.orchestrator/`: Canonical state, locks, and generated artifacts.
-- `brain/`: Planning, post-mortems, and long-term memory.
-- `orch.sh`: The experimental launcher and probe harness.
-
-## Standards
-- **Manual Compliance**: User-triggered switching only.
-- **Isolation First**: No auth-bleed between profiles.
-- **Provenance Aware**: Every state field must have a source and timestamp.
-- **Verification Driven**: Clone-and-verify takeover policy.
+## Documentation Suite
+- **[GEMINI.md](GEMINI.md)**: Core project standards and technical specifications.
+- **[AGENT_GUIDE.md](AGENT_GUIDE.md)**: How AI agents should operate within the framework.
+- **[BOOTSTRAP.md](BOOTSTRAP.md)**: Universal guide for integrating AtmanVessel into any repository.
+- **[CLI_GUIDE.md](CLI_GUIDE.md)**: Comprehensive command reference for the `orch` CLI.
+- **[MCP_GUIDE.md](MCP_GUIDE.md)**: Technical reference for connecting agents via MCP.
 
 ## Getting Started
-See `.agent/workflows/orchestrator-master-spec.md` for the full technical specification.
+To install the orchestrator globally on your system:
+```bash
+ln -sf $(pwd)/orch.sh ~/.local/bin/orch
+orch init
+```

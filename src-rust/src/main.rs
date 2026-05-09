@@ -95,6 +95,9 @@ enum Commands {
         /// Create a new worktree for this session
         #[arg(long)]
         new_worktree: bool,
+        /// Run the CLI in interactive mode (inherit stdin/stdout/stderr)
+        #[arg(long)]
+        interactive: bool,
         /// Arguments to pass to the CLI
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
@@ -566,11 +569,42 @@ impl Session {
         ));
 
         handoff.push_str("\n## 2. Verified Facts\n");
-        for fact in &self.state.verified_facts.items {
-            handoff.push_str(&format!("- {} (Source: {})\n", fact.value, fact.source));
+        if self.state.verified_facts.items.is_empty() {
+            handoff.push_str("- No verified facts yet.\n");
+        } else {
+            for fact in &self.state.verified_facts.items {
+                handoff.push_str(&format!("- {} (Source: {})\n", fact.value, fact.source));
+            }
         }
 
-        handoff.push_str("\n## 3. Provenance\n");
+        handoff.push_str("\n## 3. Blockers\n");
+        if self.state.blockers.items.is_empty() {
+            handoff.push_str("- No known blockers.\n");
+        } else {
+            for blocker in &self.state.blockers.items {
+                handoff.push_str(&format!("- {} (Source: {})\n", blocker.value, blocker.source));
+            }
+        }
+
+        handoff.push_str("\n## 4. Files in Focus\n");
+        if self.state.files_in_focus.items.is_empty() {
+            handoff.push_str("- No files currently in focus.\n");
+        } else {
+            for focus in &self.state.files_in_focus.items {
+                handoff.push_str(&format!("- `{:?}`\n", focus.value));
+            }
+        }
+
+        handoff.push_str("\n## 5. Next Atomic Steps\n");
+        if self.state.next_actions.items.is_empty() {
+            handoff.push_str("- Triage current state and define next steps.\n");
+        } else {
+            for action in &self.state.next_actions.items {
+                handoff.push_str(&format!("- {}\n", action.value));
+            }
+        }
+
+        handoff.push_str("\n## 6. Provenance\n");
         if let Some(ref p) = self.current_task {
             handoff.push_str(&format!(
                 "- Task Source: {} (at {})\n",
@@ -741,7 +775,24 @@ impl Session {
     }
 }
 
-pub fn bootstrap_profile(profile_root: &Path) -> Result<()> {
+pub fn bootstrap_profile(profile_root: &Path, project_root: &Path, profile_name: &str) -> Result<()> {
+    // 1. Try to bootstrap from local project profile storage
+    let local_source = project_root.join(".orchestrator/profiles").join(profile_name).join(".gemini");
+    if local_source.exists() {
+        let target_dir = profile_root.join(".gemini");
+        return bootstrap_profile_from_source(&local_source, &target_dir);
+    }
+
+    // 2. Try to bootstrap from global system profile storage
+    if let Ok(global_system) = get_global_system_path() {
+        let global_source = global_system.join("profiles").join(profile_name).join(".gemini");
+        if global_source.exists() {
+            let target_dir = profile_root.join(".gemini");
+            return bootstrap_profile_from_source(&global_source, &target_dir);
+        }
+    }
+
+    // 3. Fallback to global home directory (for initial profile setup)
     let source_dir = std::env::home_dir()
         .map(|p| p.join(".gemini"))
         .context("Could not find home directory")?;
@@ -755,11 +806,11 @@ pub fn bootstrap_profile_from_source(source_dir: &Path, profile_path: &Path) -> 
     }
 
     let files = [
-        "google_accounts.json",
-        "oauth_creds.json",
         "settings.json",
         "projects.json",
         "state.json",
+        "oauth_creds.json",
+        "google_accounts.json",
     ];
 
     for file in &files {
@@ -777,8 +828,8 @@ pub fn prepare_launch_command(
     cli: &str,
     profile_path: &Path,
     args: &[String],
-) -> std::process::Command {
-    let mut cmd = std::process::Command::new(cli);
+) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(cli);
     cmd.env("HOME", profile_path);
     cmd.env("GEMINI_CLI_TRUST_WORKSPACE", "true");
     cmd.args(args);
@@ -974,7 +1025,7 @@ pub fn start_task_core(root: &Path, slug: &str, profile: &str) -> Result<PathBuf
     let mut session = Session::load(&wt_session_path)?;
     let profile_root = wt_path.join(".orchestrator/profiles").join(profile);
     
-    bootstrap_profile(&profile_root)?;
+    bootstrap_profile(&profile_root, root, profile)?;
     session.acquire_lock(wt_path.clone(), profile)?;
     session.set_active_profile(profile, "task-start");
     session.save(&wt_session_path)?;
@@ -1065,31 +1116,88 @@ pub fn bootstrap_charters(charters_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn run_cli(
+async fn run_cli(
     cli_bin: &str,
     profile_root: &Path,
     args: &[String],
     session_path: &Path,
     session: &mut Session,
+    interactive: bool,
 ) -> Result<()> {
     let mut cmd = prepare_launch_command(cli_bin, profile_root, args);
+    cmd.kill_on_drop(true);
+    let timeout_duration = std::time::Duration::from_secs(60);
 
-    cmd.stdin(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit());
+    if interactive {
+        cmd.stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
 
-    let mut child = cmd
-        .spawn()
-        .with_context(|| format!("Failed to spawn CLI: {}", cli_bin))?;
-    let status = child.wait().context("Failed to wait for CLI process")?;
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("Failed to spawn CLI: {}", cli_bin))?;
+        
+        let status = tokio::time::timeout(timeout_duration, child.wait())
+            .await
+            .map_err(|_| anyhow::anyhow!("CLI process timed out after 60 seconds"))?
+            .context("Failed to wait for CLI process")?;
 
-    if !status.success() {
-        session.state_status = StateStatus::Crashed;
-        session.save(session_path)?;
-        anyhow::bail!("CLI process exited with non-zero status: {}", status);
+        if !status.success() {
+            session.state_status = StateStatus::Crashed;
+            session.save(session_path)?;
+            anyhow::bail!("CLI process exited with non-zero status: {}", status);
+        } else {
+            session.state_status = StateStatus::Completed;
+            session.save(session_path)?;
+        }
     } else {
-        session.state_status = StateStatus::Completed;
-        session.save(session_path)?;
+        // Ensure autonomous mode
+        cmd.arg("--yolo");
+
+        // Capture output to prevent cluttering the manager's terminal
+        cmd.stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("Failed to spawn CLI: {}", cli_bin))?;
+
+        // Inject the handoff as the first directive
+        if let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            let handoff = session.generate_handoff();
+            let directive = format!(
+                "Context: Read the handoff below and resume work from 'Next Atomic Steps'. Do not ask for confirmation. Be autonomous.\n\n---\n{}\n---\n",
+                handoff
+            );
+            stdin.write_all(directive.as_bytes()).await?;
+            stdin.flush().await?;
+        }
+
+        let result = tokio::time::timeout(timeout_duration, child.wait_with_output()).await;
+
+        match result {
+            Ok(Ok(output)) => {
+                // Print captured output so the manager/user can see what happened
+                io::stdout().write_all(&output.stdout)?;
+                io::stderr().write_all(&output.stderr)?;
+
+                if !output.status.success() {
+                    session.state_status = StateStatus::Crashed;
+                    session.save(session_path)?;
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("CLI process failed: {}", err);
+                } else {
+                    session.state_status = StateStatus::Completed;
+                    session.save(session_path)?;
+                }
+            }
+            Ok(Err(e)) => anyhow::bail!("Failed to wait for CLI process: {}", e),
+            Err(_) => {
+                anyhow::bail!("CLI process timed out after 60 seconds");
+            }
+        }
     }
     Ok(())
 }
@@ -1204,9 +1312,9 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                                 let profile_root = wt_path.join(".orchestrator/profiles").join(profile);
 
                                 // We spawn in background for MCP to not block the server indefinitely
-                                tokio::task::spawn_blocking(move || {
+                                tokio::spawn(async move {
                                     if let Ok(mut session_inner) = Session::load(&wt_session_path) {
-                                        let _ = run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session_inner);
+                                        let _ = run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session_inner, false).await;
                                     }
                                 });
 
@@ -1245,7 +1353,7 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                                     Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Save Error: {}", e) }] }))
                                 } else {
                                     // Bootstrap and regenerate handoff
-                                    let _ = bootstrap_profile(&profile_root);
+                                    let _ = bootstrap_profile(&profile_root, &wt, p);
                                     let handoff_path = wt.join(".orchestrator/HANDOFF.md");
                                     let _ = fs::write(&handoff_path, session.generate_handoff());
 
@@ -1365,7 +1473,7 @@ async fn main() -> Result<()> {
                     let mut session = Session::load(&wt_session_path)?;
                     let profile_root = wt_path.join(".orchestrator/profiles").join(&profile);
 
-                    run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session)?;
+                    run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session, false).await?;
                 }
                 TaskCommands::List => {
                     let board = Board::new(&root);
@@ -1396,6 +1504,7 @@ async fn main() -> Result<()> {
             worktree,
             cli: cli_bin,
             new_worktree,
+            interactive,
             args,
         } => {
             let wt = if new_worktree {
@@ -1446,13 +1555,14 @@ async fn main() -> Result<()> {
             session.save(&session_path)?;
 
             // Bootstrap
-            bootstrap_profile(&profile_root)?;
+            let base_root = std::env::current_dir()?;
+            bootstrap_profile(&profile_root, &base_root, &profile)?;
 
             let handoff_path = wt.join(".orchestrator/HANDOFF.md");
             fs::write(&handoff_path, session.generate_handoff())?;
             println!("Handoff generated at {:?}", handoff_path);
 
-            run_cli(&cli_bin, &profile_root, &args, &session_path, &mut session)?;
+            run_cli(&cli_bin, &profile_root, &args, &session_path, &mut session, interactive).await?;
         }
         Commands::Verify => {
             let mut session = Session::load(session_path)?;
@@ -1540,14 +1650,14 @@ async fn main() -> Result<()> {
             session.save(session_path)?;
 
             // Bootstrap
-            bootstrap_profile(&profile_root)?;
+            bootstrap_profile(&profile_root, &wt, &profile)?;
 
             let handoff_path = wt.join(".orchestrator/HANDOFF.md");
             fs::write(&handoff_path, session.generate_handoff())?;
             println!("Handoff regenerated for switch to {}", profile);
 
             // Default to 'gemini' for switch if not otherwise known
-            run_cli("gemini", &profile_root, &[], session_path, &mut session)?;
+            run_cli("gemini", &profile_root, &[], session_path, &mut session, false).await?;
         }
         Commands::Recover => {
             println!("💊 Recovering session...");
@@ -1706,7 +1816,7 @@ async fn main() -> Result<()> {
             let profile_root = wt.join(".orchestrator/profiles").join(&profile_name);
 
             // Bootstrap
-            bootstrap_profile(&profile_root)?;
+            bootstrap_profile(&profile_root, &wt, &profile_name)?;
 
             // Regenerate HANDOFF.md
             let handoff_path = wt.join(".orchestrator/HANDOFF.md");
@@ -1716,7 +1826,7 @@ async fn main() -> Result<()> {
             println!("Session resumed with profile: {}", profile_name);
 
             // Default to 'gemini' for resume if not otherwise known
-            run_cli("gemini", &profile_root, &[], session_path, &mut session)?;
+            run_cli("gemini", &profile_root, &[], session_path, &mut session, false).await?;
         }
         Commands::Status => {
             let session = Session::load(session_path)?;
