@@ -9,7 +9,7 @@ BINARY_PATH="$SCRIPT_DIR/src-rust/target/debug/orch"
 
 # Build if missing
 if [ ! -f "$BINARY_PATH" ]; then
-    echo "🔧 First run: Building orchestrator core..."
+    echo "🔧 First run: Building orchestrator core..." >&2
     (cd "$SCRIPT_DIR/src-rust" && cargo build --quiet)
 fi
 
