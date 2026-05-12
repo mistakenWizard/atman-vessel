@@ -1180,8 +1180,8 @@ async fn run_cli(
 
         match result {
             Ok(Ok(output)) => {
-                // Print captured output so the manager/user can see what happened
-                io::stdout().write_all(&output.stdout)?;
+                // Print captured output to stderr to prevent corrupting MCP JSON-RPC on stdout
+                io::stderr().write_all(&output.stdout)?;
                 io::stderr().write_all(&output.stderr)?;
 
                 if !output.status.success() {
