@@ -837,19 +837,19 @@ pub fn prepare_launch_command(
 }
 
 fn probe_platform() -> Result<()> {
-    print!("  - Platform Probe... ");
+    eprint!("  - Platform Probe... ");
     let is_wsl = is_wsl();
     let os = std::env::consts::OS;
     if os != "linux" && os != "windows" {
-        println!("❌");
+        eprintln!("❌");
         anyhow::bail!("Unsupported OS: {}", os);
     }
-    println!("✅ ({} {})", os, if is_wsl { "WSL" } else { "Native" });
+    eprintln!("✅ ({} {})", os, if is_wsl { "WSL" } else { "Native" });
     Ok(())
 }
 
 fn probe_locks() -> Result<()> {
-    print!("  - Lock Liveness Probe... ");
+    eprint!("  - Lock Liveness Probe... ");
     let wt = std::env::current_dir()?;
     let session_id = "probe-session";
     let profile = "probe-profile";
@@ -869,7 +869,7 @@ fn probe_locks() -> Result<()> {
     lock.save(&lock_path)?;
     let loaded = Lock::load(&lock_path)?;
     if !loaded.is_live() {
-        println!("❌");
+        eprintln!("❌");
         anyhow::bail!("Live lock detected as dead");
     }
 
@@ -891,31 +891,31 @@ fn probe_locks() -> Result<()> {
             use libc::{ESRCH, kill};
             let res = unsafe { kill(stale_pid as i32, 0) };
             if res != 0 && std::io::Error::last_os_error().raw_os_error() == Some(ESRCH) {
-                println!("❌");
+                eprintln!("❌");
                 anyhow::bail!("Stale lock detected as live");
             }
         }
     }
 
     fs::remove_dir_all(&lock_dir)?;
-    println!("✅");
+    eprintln!("✅");
     Ok(())
 }
 
 fn probe_schema() -> Result<()> {
-    print!("  - Schema Version Probe... ");
+    eprint!("  - Schema Version Probe... ");
     let current_version = "1.4.0";
     let session = Session::new();
     if session.schema_version != current_version {
-        println!("❌");
+        eprintln!("❌");
         anyhow::bail!("Unexpected schema version: {}", session.schema_version);
     }
-    println!("✅");
+    eprintln!("✅");
     Ok(())
 }
 
 fn probe_sync() -> Result<()> {
-    print!("  - Multi-Terminal Sync Probe... ");
+    eprint!("  - Multi-Terminal Sync Probe... ");
     let temp_dir = std::env::temp_dir().join(format!("orch-probe-sync-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&temp_dir)?;
     let session_path = temp_dir.join("session.json");
@@ -932,17 +932,17 @@ fn probe_sync() -> Result<()> {
     // Session A should detect stale state
     let result = session_a.save(&session_path);
     if result.is_ok() {
-        println!("❌");
+        eprintln!("❌");
         anyhow::bail!("Session A failed to detect stale state on disk");
     }
 
     fs::remove_dir_all(&temp_dir)?;
-    println!("✅");
+    eprintln!("✅");
     Ok(())
 }
 
 fn probe_isolation() -> Result<()> {
-    print!("  - Profile Isolation Probe... ");
+    eprint!("  - Profile Isolation Probe... ");
     // Logic: Verify we can create a temporary HOME and it doesn't affect current environment
     let temp_home =
         std::env::temp_dir().join(format!("orch-probe-isolation-{}", uuid::Uuid::new_v4()));
@@ -959,23 +959,23 @@ fn probe_isolation() -> Result<()> {
         .status()?;
 
     if !status.success() {
-        println!("❌");
+        eprintln!("❌");
         anyhow::bail!("Failed to spawn child process with custom HOME");
     }
 
     fs::remove_dir_all(&temp_home)?;
-    println!("✅");
+    eprintln!("✅");
     Ok(())
 }
 
 pub fn run_probes() -> Result<()> {
-    println!("🔍 Running pre-flight probes...");
+    eprintln!("🔍 Running pre-flight probes...");
     probe_platform()?;
     probe_locks()?;
     probe_schema()?;
     probe_sync()?;
     probe_isolation()?;
-    println!("✅ All probes passed.");
+    eprintln!("✅ All probes passed.");
     Ok(())
 }
 
@@ -1042,18 +1042,19 @@ pub fn create_worktree(base_path: &Path, session_id: &str, slug: &str) -> Result
         .join(format!("session-{}-{}", session_id, slug));
 
     if !wt_path.exists() {
-        let status = std::process::Command::new("git")
+        let output = std::process::Command::new("git")
             .arg("worktree")
             .arg("add")
             .arg("-b")
             .arg(format!("task-{}-{}", session_id, slug))
             .arg(&wt_path)
             .arg("HEAD")
-            .status()
+            .output()
             .context("Failed to execute git worktree add")?;
 
-        if !status.success() {
-            anyhow::bail!("git worktree add failed with status: {}", status);
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("git worktree add failed: {}", err);
         }
     }
 
