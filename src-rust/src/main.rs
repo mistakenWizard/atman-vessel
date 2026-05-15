@@ -1367,6 +1367,17 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                     }
                 },
                 {
+                    "name": "finish_task",
+                    "description": "Commit and merge results from a specialist worktree back to parent branch",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "slug": { "type": "string", "description": "The task slug" }
+                        },
+                        "required": ["slug"]
+                    }
+                },
+                {
                     "name": "freeze_session",
                     "description": "Freeze current session with a summary message",
                     "inputSchema": {
@@ -1460,6 +1471,65 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                         }
                     } else {
                         Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Missing 'profile' argument" }] }))
+                    }
+                }
+                Some("finish_task") => {
+                    let slug = arguments.and_then(|a| a.get("slug")).and_then(|s| s.as_str());
+                    if let Some(s) = slug {
+                        let root = match std::env::current_dir() {
+                            Ok(d) => d,
+                            Err(e) => return McpResponse { jsonrpc: "2.0".to_string(), result: None, error: Some(McpError { code: -32000, message: format!("IO Error: {}", e) }), id: req.id },
+                        };
+
+                        println!("🏁 MCP: Finishing task: {}", s);
+                        let board = Board::new(&root);
+                        match board.get_task(s) {
+                            Ok(Some(task)) => {
+                                let wt_path = PathBuf::from(&task.path);
+                                if !wt_path.exists() {
+                                    Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Worktree path does not exist" }] }))
+                                } else {
+                                    // Commit
+                                    let _ = std::process::Command::new("git").arg("-C").arg(&wt_path).args(["add", "."]).status();
+                                    let commit_msg = format!("feat(minion): results from {}", s);
+                                    let _ = std::process::Command::new("git").arg("-C").arg(&wt_path).args(["commit", "-m", &commit_msg]).status();
+
+                                    let mut merge_failed = false;
+                                    // Merge
+                                    if let Some(parent) = task.parent_branch {
+                                        let task_branch = std::process::Command::new("git").arg("-C").arg(&wt_path).args(["rev-parse", "--abbrev-ref", "HEAD"]).output()
+                                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+                                        
+                                        let _ = std::process::Command::new("git").args(["checkout", &parent]).status();
+                                        let merge_status = std::process::Command::new("git").args(["merge", &task_branch]).status();
+                                        
+                                        if let Ok(st) = merge_status {
+                                            if !st.success() {
+                                                merge_failed = true;
+                                            }
+                                        }
+                                    }
+
+                                    if merge_failed {
+                                        Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Merge conflict detected" }] }))
+                                    } else {
+                                        // Mark Stale
+                                        let _ = board.update_task(&Task {
+                                            slug: s.to_string(),
+                                            minion: task.minion,
+                                            status: "Stale (Merged)".to_string(),
+                                            path: task.path,
+                                            parent_branch: None,
+                                        });
+
+                                        Some(serde_json::json!({ "content": [{ "type": "text", "text": format!("Task {} finished and merged.", s) }] }))
+                                    }
+                                }
+                            }
+                            _ => Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Task not found" }] })),
+                        }
+                    } else {
+                        Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": "Missing 'slug' argument" }] }))
                     }
                 }
                 Some("freeze_session") => {
