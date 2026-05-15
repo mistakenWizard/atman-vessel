@@ -1731,7 +1731,7 @@ async fn main() -> Result<()> {
                     println!("✅ Worktree created at {:?}", wt_path);
                     println!("🚀 Deploying minion {} in background...", profile);
 
-                    let wt_session_path = wt_path.join(".orchestrator/session.json");
+                    let _wt_session_path = wt_path.join(".orchestrator/session.json");
                     let profile_root = wt_path.join(".orchestrator/profiles").join(&profile);
 
                     // Prepare the launch command
