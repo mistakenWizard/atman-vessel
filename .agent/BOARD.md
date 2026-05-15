@@ -14,3 +14,4 @@
 | `mcp-test-2` | chief | In Progress | /mnt/e/atman-vessel/.worktrees/session-7ab09d01-c9cc-4e62-b098-96c6d8abc217-mcp-test-2 |
 | `mcp-test-3` | chief | In Progress | /mnt/e/atman-vessel/.worktrees/session-7ab09d01-c9cc-4e62-b098-96c6d8abc217-mcp-test-3 |
 | `chief-timeout-log` | chief | In Progress | /mnt/e/atman-vessel/.worktrees/session-7ab09d01-c9cc-4e62-b098-96c6d8abc217-chief-timeout-log |
+| `audit-algos` | gayatri | In Progress | /mnt/e/atman-vessel/.worktrees/session-b1067464-e46d-4ada-b793-91bda202994a-audit-algos | master |

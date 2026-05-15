@@ -1269,6 +1269,7 @@ async fn run_cli(
             );
             stdin.write_all(directive.as_bytes()).await?;
             stdin.flush().await?;
+            drop(stdin); // Explicitly close stdin to signal EOF
         }
 
         let result = tokio::time::timeout(timeout_duration, child.wait_with_output()).await;
