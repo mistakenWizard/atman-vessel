@@ -23,9 +23,10 @@ struct Cli {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Task {
     pub slug: String,
-    pub agent: String,
+    pub minion: String,
     pub status: String,
     pub path: String,
+    pub parent_branch: Option<String>,
 }
 
 pub struct Board {
@@ -44,7 +45,7 @@ impl Board {
             fs::create_dir_all(self.path.parent().unwrap())?;
             fs::write(
                 &self.path,
-                "# Task Board\n\n| Task | Agent | Status | Path |\n| :--- | :--- | :--- | :--- |\n",
+                "# Task Board\n\n| Task | Minion | Status | Path | Parent |\n| :--- | :--- | :--- | :--- | :--- |\n",
             )?;
         }
 
@@ -53,8 +54,12 @@ impl Board {
         let mut found = false;
 
         let task_line = format!(
-            "| `{}` | {} | {} | {} |",
-            task.slug, task.agent, task.status, task.path
+            "| `{}` | {} | {} | {} | {} |",
+            task.slug, 
+            task.minion, 
+            task.status, 
+            task.path,
+            task.parent_branch.as_deref().unwrap_or("Unknown")
         );
 
         for line in lines.iter_mut() {
@@ -68,6 +73,45 @@ impl Board {
         if !found {
             lines.push(task_line);
         }
+
+        fs::write(&self.path, lines.join("\n") + "\n")?;
+        Ok(())
+    }
+
+    pub fn get_task(&self, slug: &str) -> Result<Option<Task>> {
+        if !self.path.exists() {
+            return Ok(None);
+        }
+
+        let content = fs::read_to_string(&self.path)?;
+        for line in content.lines() {
+            if line.contains(&format!("| `{}` |", slug)) {
+                let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+                if parts.len() >= 6 {
+                    return Ok(Some(Task {
+                        slug: slug.to_string(),
+                        minion: parts[2].to_string(),
+                        status: parts[3].to_string(),
+                        path: parts[4].to_string(),
+                        parent_branch: Some(parts[5].to_string()),
+                    }));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub fn remove_task(&self, slug: &str) -> Result<()> {
+        if !self.path.exists() {
+            return Ok(());
+        }
+
+        let content = fs::read_to_string(&self.path)?;
+        let lines: Vec<String> = content
+            .lines()
+            .filter(|l| !l.contains(&format!("| `{}` |", slug)))
+            .map(|s| s.to_string())
+            .collect();
 
         fs::write(&self.path, lines.join("\n") + "\n")?;
         Ok(())
@@ -163,7 +207,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum TaskCommands {
-    /// Start a new task (creates worktree and launches chief)
+    /// Start a new task (creates worktree and launches chief minion)
     Start {
         /// Task slug (e.g., fix-auth-bug)
         slug: String,
@@ -177,6 +221,10 @@ enum TaskCommands {
     Done {
         slug: String,
     },
+    /// Finish a task (commit and merge results back to parent)
+    Finish {
+        slug: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -187,9 +235,9 @@ enum ProfileCommands {
 
 #[derive(Subcommand)]
 enum CharterCommands {
-    /// List all available agent charters
+    /// List all available minion charters
     List,
-    /// Show details of a specific agent charter
+    /// Show details of a specific minion charter
     Show { name: String },
 }
 
@@ -746,7 +794,7 @@ impl Session {
                 if path.extension().and_then(|s| s.to_str()) == Some("json") {
                     if let Ok(lock) = Lock::load(&path) {
                         if !lock.is_live() {
-                            println!(
+                            eprintln!(
                                 "  Removing stale lock: {:?}",
                                 path.file_name().unwrap_or_default()
                             );
@@ -757,6 +805,42 @@ impl Session {
             }
         }
 
+        // Cleanup Stale Worktrees from Board
+        let board = Board::new(worktree);
+        if board.path.exists() {
+            let content = fs::read_to_string(&board.path)?;
+            let mut slugs_to_remove = Vec::new();
+
+            for line in content.lines() {
+                if line.contains("| `") && (line.contains("Stale") || line.contains("Done")) {
+                    let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+                    if parts.len() >= 5 {
+                        let slug = parts[1].trim_matches('`').to_string();
+                        let path_str = parts[4].to_string();
+                        let wt_path = PathBuf::from(&path_str);
+
+                        if wt_path.exists() && path_str.contains(".worktrees") {
+                            println!("🗑️  Removing stale minion worktree: {}", slug);
+                            let status = std::process::Command::new("git")
+                                .args(["worktree", "remove", "--force", &path_str])
+                                .status()?;
+                            
+                            if status.success() {
+                                slugs_to_remove.push(slug);
+                            }
+                        } else {
+                            // If path doesn't exist, just remove from board
+                            slugs_to_remove.push(slug);
+                        }
+                    }
+                }
+            }
+
+            for slug in slugs_to_remove {
+                board.remove_task(&slug)?;
+            }
+        }
+
         // Archive handoff if it exists
         let handoff_path = worktree.join(".orchestrator/HANDOFF.md");
         if handoff_path.exists() {
@@ -764,7 +848,7 @@ impl Session {
             fs::create_dir_all(&archive_dir)?;
             let now = Utc::now().format("%Y%m%d_%H%M%S").to_string();
             let archived_name = format!("HANDOFF_{}.md", now);
-            println!(
+            eprintln!(
                 "  Archiving handoff to {:?}",
                 archive_dir.join(&archived_name)
             );
@@ -830,7 +914,10 @@ pub fn prepare_launch_command(
     args: &[String],
 ) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(cli);
+    // Harden path redirection to ensure CLI finds the correct profile credentials
     cmd.env("HOME", profile_path);
+    cmd.env("GEMINI_CLI_HOME", profile_path);
+    cmd.env("XDG_CONFIG_HOME", profile_path);
     cmd.env("GEMINI_CLI_TRUST_WORKSPACE", "true");
     cmd.args(args);
     cmd
@@ -1008,16 +1095,24 @@ pub fn start_task_core(root: &Path, slug: &str, profile: &str) -> Result<PathBuf
     // 3. Create Worktree
     let wt_path = create_worktree(root, &session_id, slug)?;
     
-    // 4. Update Board
+    // 4. Get Current Branch as Parent
+    let parent_branch = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .ok();
+
+    // 5. Update Board
     let board = Board::new(root);
     board.update_task(&Task {
         slug: slug.to_string(),
-        agent: profile.to_string(),
+        minion: profile.to_string(),
         status: "In Progress".to_string(),
         path: wt_path.to_string_lossy().to_string(),
+        parent_branch,
     })?;
 
-    // 5. Initialize/Load session in worktree
+    // 6. Initialize/Load session in worktree
     let wt_session_path = wt_path.join(".orchestrator/session.json");
     if !wt_session_path.exists() {
         Session::init(&wt_path)?;
@@ -1468,7 +1563,7 @@ async fn main() -> Result<()> {
                     println!("🚀 Starting task: {}", slug);
                     let wt_path = start_task_core(&root, &slug, &profile)?;
                     println!("✅ Worktree created at {:?}", wt_path);
-                    println!("🚀 Launching agent {}...", profile);
+                    println!("🚀 Deploying minion {}...", profile);
 
                     let wt_session_path = wt_path.join(".orchestrator/session.json");
                     let mut session = Session::load(&wt_session_path)?;
@@ -1489,11 +1584,93 @@ async fn main() -> Result<()> {
                     let board = Board::new(&root);
                     board.update_task(&Task {
                         slug,
-                        agent: "None".to_string(),
+                        minion: "None".to_string(),
                         status: "Done".to_string(),
                         path: "Archived".to_string(),
+                        parent_branch: None,
                     })?;
                     println!("Task marked as Done.");
+                }
+                TaskCommands::Finish { slug } => {
+                    let board = Board::new(&root);
+                    if let Some(task) = board.get_task(&slug)? {
+                        println!("🏁 Finishing task: {}", slug);
+                        let wt_path = PathBuf::from(&task.path);
+                        
+                        if !wt_path.exists() {
+                            anyhow::bail!("Worktree path does not exist: {:?}", wt_path);
+                        }
+
+                        // 1. Commit changes in worktree
+                        println!("📝 Committing changes in worktree...");
+                        let status = std::process::Command::new("git")
+                            .arg("-C")
+                            .arg(&wt_path)
+                            .args(["add", "."])
+                            .status()?;
+                        
+                        if !status.success() {
+                            anyhow::bail!("Failed to stage changes in worktree");
+                        }
+
+                        let commit_msg = format!("feat(minion): results from {}", slug);
+                        let status = std::process::Command::new("git")
+                            .arg("-C")
+                            .arg(&wt_path)
+                            .args(["commit", "-m", &commit_msg])
+                            .status()?;
+
+                        if !status.success() {
+                            println!("⚠️ No changes to commit or commit failed.");
+                        }
+
+                        // 2. Merge to parent branch
+                        if let Some(parent) = task.parent_branch {
+                            println!("🔄 Merging results into parent branch: {}", parent);
+                            
+                            // Get the current task branch name
+                            let task_branch = std::process::Command::new("git")
+                                .arg("-C")
+                                .arg(&wt_path)
+                                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                                .output()
+                                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
+
+                            // Switch parent repo to parent branch if not already there
+                            let status = std::process::Command::new("git")
+                                .args(["checkout", &parent])
+                                .status()?;
+
+                            if !status.success() {
+                                anyhow::bail!("Failed to checkout parent branch: {}", parent);
+                            }
+
+                            // Merge the task branch
+                            let status = std::process::Command::new("git")
+                                .args(["merge", &task_branch])
+                                .status()?;
+
+                            if !status.success() {
+                                anyhow::bail!("Merge conflict detected. Please resolve manually in branch {}", parent);
+                            }
+                            
+                            println!("✅ Successfully merged {} into {}", task_branch, parent);
+                        }
+
+                        // 3. Mark as Stale for cleanup
+                        board.update_task(&Task {
+                            slug: slug.clone(),
+                            minion: task.minion,
+                            status: "Stale (Merged)".to_string(),
+                            path: task.path,
+                            parent_branch: None,
+                        })?;
+                        
+                        println!("🧹 Task marked as Stale. Run `orch cleanup` to remove the worktree.");
+
+                    } else {
+                        anyhow::bail!("Task not found: {}", slug);
+                    }
                 }
             }
         }
