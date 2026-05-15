@@ -397,7 +397,11 @@ impl Lock {
 
             if let Ok(out) = output {
                 let s = String::from_utf8_lossy(&out.stdout);
-                s.contains(&self.pid.to_string())
+                // Exact PID match: Look for the PID surrounded by whitespace or at the start/end of a line
+                // tasklist /NH output starts with the image name, then PID is the second column.
+                s.lines().any(|line| {
+                    line.split_whitespace().any(|word| word == self.pid.to_string())
+                })
             } else {
                 true
             }
@@ -448,6 +452,7 @@ pub struct SessionState {
 pub struct Session {
     pub schema_version: String,
     pub session_id: String,
+    pub version: u64,
     pub state_status: StateStatus,
     pub classification: DataClassification,
     pub active_profile: Option<Provenance<String>>,
@@ -465,8 +470,9 @@ impl Session {
     pub fn new() -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
         Self {
-            schema_version: "1.4.0".to_string(),
+            schema_version: "1.5.0".to_string(),
             session_id,
+            version: 0,
             state_status: StateStatus::Planned,
             classification: DataClassification::Internal,
             active_profile: None,
@@ -501,6 +507,8 @@ impl Session {
         if path.exists() {
             let metadata = fs::metadata(path)?;
             let last_modified: DateTime<Utc> = metadata.modified()?.into();
+            
+            // 1. Check timestamp (Legacy/Fallback)
             if last_modified > self.loaded_at {
                 anyhow::bail!(
                     "State on disk is newer than loaded session ({} > {})",
@@ -508,8 +516,24 @@ impl Session {
                     self.loaded_at
                 );
             }
+
+            // 2. Check version (Robust)
+            let on_disk_content = fs::read_to_string(path)?;
+            if let Ok(on_disk) = serde_json::from_str::<serde_json::Value>(&on_disk_content) {
+                if let Some(on_disk_version) = on_disk.get("version").and_then(|v| v.as_u64()) {
+                    if on_disk_version > self.version {
+                        anyhow::bail!(
+                            "Version mismatch: disk version {} is newer than memory version {}",
+                            on_disk_version,
+                            self.version
+                        );
+                    }
+                }
+            }
         }
 
+        self.version += 1;
+        self.last_updated = Utc::now();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -524,15 +548,86 @@ impl Session {
     }
 
     pub fn promote_facts(&mut self) {
-        for item in &mut self.state.verified_facts.items {
-            if item.status == ProvenanceStatus::Observed
-                || item.status == ProvenanceStatus::Asserted
-            {
-                item.status = ProvenanceStatus::Verified;
+        let mut promoted = 0;
+
+        // Promote Goal
+        if let Some(ref mut goal) = self.state.goal {
+            if goal.status != ProvenanceStatus::Verified {
+                goal.status = ProvenanceStatus::Verified;
+                promoted += 1;
             }
         }
-        self.last_verified_at = Some(Utc::now());
-        self.touch();
+
+        // Promote Facts
+        for item in &mut self.state.verified_facts.items {
+            if item.status != ProvenanceStatus::Verified {
+                item.status = ProvenanceStatus::Verified;
+                promoted += 1;
+            }
+        }
+
+        // Promote Blockers
+        for item in &mut self.state.blockers.items {
+            if item.status != ProvenanceStatus::Verified {
+                item.status = ProvenanceStatus::Verified;
+                promoted += 1;
+            }
+        }
+
+        // Promote Next Actions
+        for item in &mut self.state.next_actions.items {
+            if item.status != ProvenanceStatus::Verified {
+                item.status = ProvenanceStatus::Verified;
+                promoted += 1;
+            }
+        }
+
+        if promoted > 0 {
+            self.last_verified_at = Some(Utc::now());
+            
+            // If we were in Takeover mode and now everything is verified, transition to Resumed
+            if self.state_status == StateStatus::Takeover && self.is_fully_verified() {
+                self.state_status = StateStatus::Resumed;
+            }
+            
+            self.touch();
+        }
+    }
+
+    pub fn is_fully_verified(&self) -> bool {
+        if let Some(ref goal) = self.state.goal {
+            if goal.status != ProvenanceStatus::Verified {
+                return false;
+            }
+        }
+        if self
+            .state
+            .verified_facts
+            .items
+            .iter()
+            .any(|i| i.status != ProvenanceStatus::Verified)
+        {
+            return false;
+        }
+        if self
+            .state
+            .blockers
+            .items
+            .iter()
+            .any(|i| i.status != ProvenanceStatus::Verified)
+        {
+            return false;
+        }
+        if self
+            .state
+            .next_actions
+            .items
+            .iter()
+            .any(|i| i.status != ProvenanceStatus::Verified)
+        {
+            return false;
+        }
+        true
     }
 
     pub fn set_active_profile(&mut self, profile_name: &str, source: &str) {
@@ -991,7 +1086,7 @@ fn probe_locks() -> Result<()> {
 
 fn probe_schema() -> Result<()> {
     eprint!("  - Schema Version Probe... ");
-    let current_version = "1.4.0";
+    let current_version = "1.5.0";
     let session = Session::new();
     if session.schema_version != current_version {
         eprintln!("❌");

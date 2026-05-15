@@ -17,6 +17,90 @@ fn setup_test_dir(name: &str) -> PathBuf {
 }
 
 #[test]
+fn test_is_fully_verified() {
+    let mut session = Session::new();
+    
+    // Default session (Planned, no goal) is fully verified
+    assert!(session.is_fully_verified());
+
+    // Add unverified goal
+    session.state.goal = Some(Provenance::new(
+        "test".to_string(),
+        "user",
+        "s1",
+        ProvenanceStatus::Asserted,
+    ));
+    assert!(!session.is_fully_verified());
+
+    // Promote
+    session.promote_facts();
+    assert!(session.is_fully_verified());
+
+    // Add unverified fact
+    session.state.verified_facts.append(Provenance::new(
+        "fact".to_string(),
+        "agent",
+        "s1",
+        ProvenanceStatus::Observed,
+    ));
+    assert!(!session.is_fully_verified());
+
+    // Promote
+    session.promote_facts();
+    assert!(session.is_fully_verified());
+}
+
+#[test]
+fn test_takeover_resumption_flow() {
+    let test_dir = setup_test_dir("takeover_resumption");
+    let mut session = Session::new();
+    session.state_status = StateStatus::Takeover;
+    
+    // Add unverified state
+    session.state.goal = Some(Provenance::new(
+        "recover task".to_string(),
+        "recovery",
+        "s1",
+        ProvenanceStatus::Asserted,
+    ));
+    
+    assert_eq!(session.state_status, StateStatus::Takeover);
+    assert!(!session.is_fully_verified());
+
+    // Promote facts should transition to Resumed
+    session.promote_facts();
+    
+    assert_eq!(session.state_status, StateStatus::Resumed);
+    assert!(session.is_fully_verified());
+
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_version_based_concurrency() {
+    let test_dir = setup_test_dir("version_concurrency");
+    let session_path = test_dir.join("session.json");
+
+    let mut session_a = Session::new();
+    session_a.save(&session_path).expect("A initial save");
+    assert_eq!(session_a.version, 1);
+
+    let mut session_b = Session::load(&session_path).expect("B load");
+    assert_eq!(session_b.version, 1);
+
+    // A updates
+    session_a.save(&session_path).expect("A second save");
+    assert_eq!(session_a.version, 2);
+
+    // B attempts to update with stale version (1)
+    let result = session_b.save(&session_path);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Version mismatch"));
+
+    fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
 fn test_stale_state_detection() {
     let test_dir = setup_test_dir("stale_state");
     let session_path = test_dir.join("session.json");
