@@ -9,6 +9,11 @@ target/
 .worktrees/
 **/.worktrees/
 
+# EXPLICITLY ALLOW AGENTS TO READ THEIR SOUL (Internal State)
+!/**/.orchestrator/HANDOFF.md
+!/**/.orchestrator/session.json
+
+
 # Generated local reports/state that can contain run-specific context.
 src-rust/brain/post-mortems/
 
