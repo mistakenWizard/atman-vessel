@@ -1,7 +1,7 @@
 # AtmanVessel: The Deterministic AI Orchestrator
 
 ## Mission
-AtmanVessel is a local AI orchestration framework designed for **Deterministic Session Resumption**. It treats AI models as disposable specialized agents (**Vessels**) while maintaining a persistent, project-local "Soul" (Context).
+AtmanVessel is a local AI orchestration framework designed for **Deterministic Session Resumption**. It treats AI models as disposable specialized agents (**Minions**) while maintaining a persistent, project-local "Soul" (Context).
 
 ## Key Features
 - **Multi-Account Rotation**: Effortlessly switch between 6+ Gemini identities to bypass rate limits.
@@ -9,10 +9,11 @@ AtmanVessel is a local AI orchestration framework designed for **Deterministic S
 - **MCP Tool Support**: A built-in Model Context Protocol server for agent-to-agent delegation.
 - **Provenance Aware**: Every state update is tracked with source and timestamp metadata.
 - **Global Integration**: One-command access via the global `orch` CLI.
+- **Hardened Safety**: Strict 60-second autonomous timeout to prevent runaway token usage.
 
 ## Documentation Suite
 - **[GEMINI.md](GEMINI.md)**: Core project standards and technical specifications.
-- **[AGENT_GUIDE.md](AGENT_GUIDE.md)**: How AI agents should operate within the framework.
+- **[AGENT_GUIDE.md](AGENT_GUIDE.md)**: How Minions should operate within the framework.
 - **[BOOTSTRAP.md](BOOTSTRAP.md)**: Universal guide for integrating AtmanVessel into any repository.
 - **[CLI_GUIDE.md](CLI_GUIDE.md)**: Comprehensive command reference for the `orch` CLI.
 - **[MCP_GUIDE.md](MCP_GUIDE.md)**: Technical reference for connecting agents via MCP.

@@ -17,20 +17,27 @@ Manage the "Souls" (authenticated identities) of your fleet.
 ## 3. Task Orchestration
 The primary workflow for agentic development.
 
-- `orch task start <slug> --profile <agent>`:
-  1. Creates a git worktree at `.worktrees/task-<slug>`.
+- `orch task start <slug> --profile <minion>`:
+  1. Creates a git worktree at `.worktrees/session-<id>-<slug>`.
   2. Initializes a local session.
-  3. Bootstraps the agent's profile (OAuth tokens).
-  4. Launches the agent in autonomous mode.
+  3. Captures the current branch as `parent_branch`.
+  4. Bootstraps the minion's profile (OAuth tokens).
+  5. Launches the minion in autonomous mode.
 
+- `orch task finish <slug>`:
+  1. Commits all changes in the task worktree.
+  2. Merges the task branch back into the `parent_branch`.
+  3. Marks the task as **Stale** for cleanup.
+
+- `orch task list`: View all active and stale tasks.
 - `orch status`: View active task, profile, and session integrity.
-- `orch cleanup`: Remove stale locks and finished worktrees.
+- `orch cleanup`: Remove stale locks and **Stale** worktrees.
 
 ## 4. State & Recovery
 - `orch freeze -m "message"`: Checkpoint the current state.
 - `orch recover`: Generate `RECOVERY.md` after a crash to reconstruct the mental map.
-- `orch takeover --profile <name>`: Forcefully acquire the session lock if an agent hangs.
+- `orch takeover --profile <name>`: Forcefully acquire the session lock if a minion hangs.
 
 ## 5. Development
-- `orch verify`: Promote "Asserted" findings from agents to "Verified" project facts.
+- `orch verify`: Promote "Asserted" findings from minions to "Verified" project facts.
 - `orch postmortem`: Generate a summary of the session's actions, tool usage, and costs.

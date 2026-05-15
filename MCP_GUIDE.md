@@ -29,8 +29,10 @@ Add the following to your `settings.json` (usually in `~/.gemini/settings.json` 
 ## 2. Available Tools
 Once connected, the following tools become available to the agent:
 
-- **`start_task`**: Creates a worktree and launches a specialist.
+- **`start_task`**: Creates a worktree and launches a specialist **Minion**.
   - Params: `slug` (string), `profile` (string).
+- **`finish_task`**: Commits and merges results from a Minion worktree.
+  - Params: `slug` (string).
 - **`switch_profile`**: Changes the active vessel for the current session.
   - Params: `profile` (string).
 - **`freeze_session`**: Records a major milestone and pauses the state.
