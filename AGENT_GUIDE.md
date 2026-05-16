@@ -10,10 +10,29 @@ You are a **Minion** operating within the AtmanVessel orchestration framework. T
 ## 2. Global Tools
 The `orch` command is available globally. You should use it to manage tasks and communicate with other Minions.
 
+### 2.1 The Mandatory Workflow: Centralized Integrity
+**MANDATORY:** All planning and design artifacts MUST be stored in the centralized investigations folder to ensure real-time visibility for other agents operating in parallel worktrees.
+
+| Artifact Type | Storage Path (Centralized) |
+|:---|:---|
+| **Design Brief** | `/mnt/e/investigations/projects/<repo>/briefs/YYYY-MM-DD/` |
+| **Task Plan** | `/mnt/e/investigations/projects/<repo>/plans/YYYY-MM-DD/` |
+| **Session Summary** | `/mnt/e/investigations/daily/YYYY-MM-DD/` |
+| **Handoffs** | `/mnt/e/investigations/projects/<repo>/handoffs/` |
+
+**DO NOT** store these artifacts solely within your isolated worktree or branch. If they are not in the central investigation layer, they do not exist for the swarm.
+
+#### 2.1.1 Discovery & Planning
+Regardless of task type, you MUST:
+1. **Identify**: Which skill set applies to this task?
+2. **Document**: Write your brief and plan to the **Centralized Investigation Path** listed above.
+3. **Approve**: Present the link to your centralized plan to the user before execution.
+
+### 2.2 Orchestration Commands
 - `orch status`: Check current session health and active profile.
 - `orch task start <slug>`: Spawn a new specialist Minion in an isolated worktree.
 - `orch task finish <slug>`: Commit and merge your results back to the parent branch.
-- `orch launch --profile <name> gemini -- -p "..."`: Delegate a sub-task to another vessel.
+- `orch launch --profile <name> gemini -- -p "..."`: Delegate a sub-task. **MANDATORY:** Use the high-signal template at `scripts/task_template.md` for your delegation prompt.
 - `orch freeze -m "..."`: Save your progress and validated facts to the global session.
 
 ## 3. Communication Protocols

@@ -13,12 +13,22 @@ To ensure isolation and prevent conflicts, we use **Task-Based Worktrees**. This
 
 ### The Workflow:
 1. **Identify Task:** Read `.agent/BOARD.md` to find a task or add a new one.
-2. **Claim & Initialize:** Use the `task start <slug>` command. 
-   - This creates a unique worktree at `../rust-algo-task-<slug>`.
-   - This creates a dedicated branch `task/<slug>` off of `release/integrated-trading-platform`.
-3. **Switch Context:** Immediately move your operation to that worktree.
-4. **Execute:** Run builds and tests only within that isolated directory.
-5. **Merge Back:** Once the task is complete, the branch `task/<slug>` MUST be merged back into `release/integrated-trading-platform`.
+2. **Discovery & Planning (Mandatory):** 
+   - You MUST NOT start coding immediately.
+   - Use `designpowers:design-discovery` to create a design brief.
+   - Use `designpowers:writing-design-plans` to create a task list.
+3. **Claim & Initialize:** Use the `task start <slug>` command. 
+   - This creates a unique worktree at `../atman-vessel-task-<slug>`.
+   - This creates a dedicated branch `task/<slug>`.
+4. **Switch Context:** Immediately move your operation to that worktree.
+5. **Execute with TDD:**
+   - Use `superpowers:test-driven-development`.
+   - Write a failing test BEFORE any implementation code.
+   - Run builds and tests only within that isolated directory.
+6. **Merge Back & Cleanup:** Once the task is complete and verified:
+   - Ensure all tests pass.
+   - Use `orch task finish <slug>` to merge and automatically cleanup the worktree.
+   - Do NOT leave untracked files or idle worktrees.
 
 ---
 

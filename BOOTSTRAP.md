@@ -20,14 +20,15 @@ If you are running via Gemini or Codex, the `atman-vessel` MCP server is already
 - `switch_profile`: To rotate identities and bypass rate limits.
 - `freeze_session`: To persist critical findings.
 
-## 4. Operational Mandates
+## 4. Operational Mandates: Centralized Integrity
 - **Autonomy**: Always set `export GEMINI_CLI_TRUST_WORKSPACE=true`.
+- **Integrity First**: Speed is secondary to correctness. **DO NOT** jump straight into coding.
+- **Centralized Documentation**: **MANDATORY.** All design briefs, plans, and handoffs must be stored in `/mnt/e/investigations/projects/<repo>/`. This ensures other agents can see your work even if you are in an isolated branch.
+- **Workflow Mandates**:
+  - **Discovery**: Save your brief to the central investigations path before starting work.
+  - **Planning**: A plan template is auto-scaffolded at `/mnt/e/investigations/projects/<repo>/plans/YYYY-MM-DD/<slug>-plan.md`. Fill it out before starting work.
+  - **TDD**: Use `superpowers:test-driven-development` for all logic changes. Write failing tests first.
 - **Isolation**: Always work inside the worktree path provided by `orch task start`.
-- **Timeout**: You have a **strict 60-second limit** per turn. Work in small increments.
+- **Timeout**: You have a **strict 60-second limit** per turn. Work in small increments and use `orch freeze`.
+- **Hygiene**: No untracked files or idle worktrees. `orch task finish` will auto-cleanup.
 - **Provenance**: Use `orch verify` to promote your findings.
-
-## 5. Merging & Cleanup
-Once your task is complete:
-1. Ensure your results/analysis are written to files in your worktree.
-2. The user or spawning agent will run `orch task finish <slug>` to merge your work back to the parent branch.
-3. The worktree will then be marked as **Stale** and removed via `orch cleanup`.
