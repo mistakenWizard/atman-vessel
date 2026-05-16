@@ -1,0 +1,12 @@
+{
+  "last_session_id": "4c7e8bc1-1439-4645-bd31-22d054d12d76",
+  "last_event_key": "4c7e8bc1-1439-4645-bd31-22d054d12d76:transcript:59d6ff35ca8e8e9e0972a8ea3eada9b00e2d5eb9b9e996938151f5250150d4d4",
+  "last_prompted_session_id": "",
+  "last_reason": "short-session",
+  "last_prompted_at": "",
+  "last_user_message_count": 0,
+  "last_actionable_message_count": 0,
+  "deep_interview_lock_active": false,
+  "deep_interview_lock_source": "/mnt/e/atman-vessel/.omg/state/deep-interview.json",
+  "updated_at": "2026-05-16T05:25:20.150Z"
+}

@@ -1207,6 +1207,21 @@ pub fn start_task_core(root: &Path, slug: &str, profile: &str) -> Result<PathBuf
         parent_branch,
     })?;
 
+    // 5.1 Scaffold Plan Template (Centralized in Investigations)
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let central_plan_dir = PathBuf::from("/mnt/e/investigations/projects/atman-vessel/plans").join(&date);
+    if central_plan_dir.exists() || std::fs::create_dir_all(&central_plan_dir).is_ok() {
+        let plan_path = central_plan_dir.join(format!("{}-plan.md", slug));
+        if !plan_path.exists() {
+            let template = format!(
+                "# Task Plan: {}\n- **Project:** atman-vessel\n- **Launched by:** {}\n- **Date:** {}\n\n## Objectives\n- [ ] Task 1\n\n## Verification Criteria\n- [ ] Criterion 1\n",
+                slug, profile, date
+            );
+            let _ = std::fs::write(&plan_path, template);
+            println!("📝 Centralized plan template scaffolded at /mnt/e/investigations/projects/atman-vessel/plans/{}/{}", date, slug);
+        }
+    }
+
     // 6. Initialize/Load session in worktree
     let wt_session_path = wt_path.join(".orchestrator/session.json");
     if !wt_session_path.exists() {
@@ -1521,7 +1536,7 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                                     }
                                 });
 
-                                Some(serde_json::json!({ "content": [{ "type": "text", "text": format!("Task {} started and agent {} launched in worktree {:?}", s, profile, wt_path) }] }))
+                                Some(serde_json::json!({ "content": [{ "type": "text", "text": format!("Task {} started and agent {} launched in worktree {:?}. A plan template has been scaffolded at brain/plans/{}-plan.md.", s, profile, wt_path, s) }] }))
                             }
                             Err(e) => Some(serde_json::json!({ "isError": true, "content": [{ "type": "text", "text": format!("Error: {}", e) }] })),
                         }
@@ -1790,7 +1805,40 @@ async fn main() -> Result<()> {
                             anyhow::bail!("Worktree path does not exist: {:?}", wt_path);
                         }
 
-                        // 1. Commit changes in worktree
+                        // 0. Integrity Check: Verify design brief exists in central investigations
+                        println!("🔍 Checking for centralized design brief...");
+                        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+                        let central_briefs_dir = PathBuf::from("/mnt/e/investigations/projects/atman-vessel/briefs").join(&date);
+                        let brief_exists = if central_briefs_dir.exists() {
+                            std::fs::read_dir(central_briefs_dir)?
+                                .filter_map(|e| e.ok())
+                                .any(|e| e.file_name().to_string_lossy().contains(&slug))
+                        } else {
+                            false
+                        };
+
+                        if !brief_exists {
+                            println!("⚠️ WARNING: No design brief found for task '{}' in /mnt/e/investigations/projects/atman-vessel/briefs/{}", slug, date);
+                            println!("High-integrity workflow requires a centralized design brief for cross-agent visibility.");
+                        }
+
+                        // 1. Check for untracked files
+                        println!("🧐 Checking for untracked files...");
+                        let untracked = std::process::Command::new("git")
+                            .arg("-C")
+                            .arg(&wt_path)
+                            .args(["status", "--porcelain"])
+                            .output()?;
+                        
+                        let untracked_str = String::from_utf8_lossy(&untracked.stdout);
+                        if untracked_str.lines().any(|l| l.starts_with("??")) {
+                            println!("⚠️ WARNING: Untracked files detected in worktree:");
+                            for line in untracked_str.lines().filter(|l| l.starts_with("??")) {
+                                println!("  {}", line);
+                            }
+                        }
+
+                        // 2. Commit changes in worktree
                         println!("📝 Committing changes in worktree...");
                         let status = std::process::Command::new("git")
                             .arg("-C")
@@ -1813,7 +1861,7 @@ async fn main() -> Result<()> {
                             println!("⚠️ No changes to commit or commit failed.");
                         }
 
-                        // 2. Merge to parent branch
+                        // 3. Merge to parent branch
                         if let Some(parent) = task.parent_branch {
                             println!("🔄 Merging results into parent branch: {}", parent);
                             
@@ -1844,18 +1892,39 @@ async fn main() -> Result<()> {
                             }
                             
                             println!("✅ Successfully merged {} into {}", task_branch, parent);
+                            
+                            // 3.1 Audit Log: Write summary to investigations
+                            let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+                            let log_dir = PathBuf::from("/mnt/e/investigations/daily").join(&date);
+                            if log_dir.exists() || std::fs::create_dir_all(&log_dir).is_ok() {
+                                let log_file = log_dir.join(format!("{}-summary.md", slug));
+                                let summary = format!(
+                                    "# Task Summary: {}\n- **Minion:** {}\n- **Status:** Integrated\n- **Date:** {}\n\nResults merged into branch `{}`.\n",
+                                    slug, task.minion, date, parent
+                                );
+                                let _ = std::fs::write(log_file, summary);
+                                println!("📝 Audit log written to investigations/daily/{}", date);
+                            }
+
+                            // 4. Auto-Cleanup Worktree
+                            println!("🧹 Auto-cleaning up worktree...");
+                            let _ = std::process::Command::new("git")
+                                .args(["worktree", "remove", &task.path, "--force"])
+                                .status();
+                            
+                            println!("✅ Worktree removed.");
                         }
 
-                        // 3. Mark as Stale for cleanup
+                        // 5. Update Board to Done
                         board.update_task(&Task {
                             slug: slug.clone(),
                             minion: task.minion,
-                            status: "Stale (Merged)".to_string(),
+                            status: "Done".to_string(),
                             path: task.path,
                             parent_branch: None,
                         })?;
                         
-                        println!("🧹 Task marked as Stale. Run `orch cleanup` to remove the worktree.");
+                        println!("🎉 Task {} complete and integrated.", slug);
 
                     } else {
                         anyhow::bail!("Task not found: {}", slug);

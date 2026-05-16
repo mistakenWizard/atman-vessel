@@ -1,3 +1,17 @@
+# Global Audit Layer & Investigations
+
+**MANDATORY:** All agent activities, documentation, and handoffs must be logged in the centralized investigations folder to ensure cross-branch visibility. This is the **primary source of truth** for project state.
+
+- **Central Hub:** /mnt/e/investigations/
+- **Daily Audit:** /mnt/e/investigations/daily/YYYY-MM-DD/ (Session summaries)
+- **Project Context:** /mnt/e/investigations/projects/atman-vessel/ (Handoffs, Features, Designs, Bug Deep-dives)
+- **Standards:** Refer to /mnt/e/investigations/STANDARDS.md for templates.
+
+Before starting work, check the latest daily logs and the relevant projects/atman-vessel/state.md. At the end of every session, you MUST:
+1. Write a session summary to daily/.
+2. Create/Update relevant feature/design/bug docs in projects/atman-vessel/.
+3. Provide a structured handoff in projects/atman-vessel/handoffs/ if work is continuing.
+
 # AtmanVessel Codex Guide
 
 ## Repo Purpose

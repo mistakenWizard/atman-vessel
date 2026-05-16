@@ -1,3 +1,17 @@
+# Global Audit Layer & Investigations
+
+**MANDATORY:** All agent activities, documentation, and handoffs must be logged in the centralized investigations folder to ensure cross-branch visibility. This is the **primary source of truth** for project state.
+
+- **Central Hub:** /mnt/e/investigations/
+- **Daily Audit:** /mnt/e/investigations/daily/YYYY-MM-DD/ (Session summaries)
+- **Project Context:** /mnt/e/investigations/projects/atman-vessel/ (Handoffs, Features, Designs, Bug Deep-dives)
+- **Standards:** Refer to /mnt/e/investigations/STANDARDS.md for templates.
+
+Before starting work, check the latest daily logs and the relevant projects/atman-vessel/state.md. At the end of every session, you MUST:
+1. Write a session summary to daily/.
+2. Create/Update relevant feature/design/bug docs in projects/atman-vessel/.
+3. Provide a structured handoff in projects/atman-vessel/handoffs/ if work is continuing.
+
 # AtmanVessel Project Standards (v1.6.0)
 
 ## 1. Core Architecture: Soul & Minion
@@ -40,11 +54,17 @@ AtmanVessel is a deterministic orchestration framework that treats AI models as 
 
 ---
 
-## 4. Operational "YOLO" Mode
-All minion launches must be **Non-Interactive** and **Autonomous**.
-- **Env Var**: `GEMINI_CLI_TRUST_WORKSPACE=true` is required for all automated operations.
-- **Global Command**: Use `orch` (installed to `~/.local/bin/orch`) for all operations.
-- **Timeout**: All autonomous operations have a **strict 60-second timeout**. Minions must checkpoint state frequently.
+## 4. Operational "High-Integrity" Mode
+All minion launches must be **Non-Interactive** and **Autonomous** but disciplined.
+- **Env Var**: `GEMINI_CLI_TRUST_WORKSPACE=true` is required.
+- **Mandate**: Speed is secondary to **Correctness** and **Integrity**.
+- **Execution Lifecycle**: 
+  1. **Research & Discovery** (Mandatory)
+  2. **Strategic Planning** (Mandatory)
+  3. **TDD Implementation** (Mandatory)
+  4. **Verification & Cleanup** (Mandatory)
+- **Global Command**: Use `orch` for all operations.
+- **Timeout**: Strict 60-second limit. Checkpoint frequently via `orch freeze`.
 
 ---
 
