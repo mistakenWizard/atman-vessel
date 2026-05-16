@@ -1444,7 +1444,7 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
             },
             "serverInfo": {
                 "name": "atman-vessel-orchestrator",
-                "version": "1.3.0"
+                "version": "1.6.0"
             }
         })),
         "tools/list" => Some(serde_json::json!({
