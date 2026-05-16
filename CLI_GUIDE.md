@@ -20,14 +20,18 @@ The primary workflow for agentic development.
 - `orch task start <slug> --profile <minion>`:
   1. Creates a git worktree at `.worktrees/session-<id>-<slug>`.
   2. Initializes a local session.
-  3. Captures the current branch as `parent_branch`.
-  4. Bootstraps the minion's profile (OAuth tokens).
-  5. Launches the minion in autonomous mode.
+  3. **Scaffolds a Centralized Plan** at `/mnt/e/investigations/projects/<repo>/plans/`.
+  4. Captures the current branch as `parent_branch`.
+  5. Bootstraps the minion's profile (OAuth tokens).
+  6. Launches the minion in autonomous mode.
 
 - `orch task finish <slug>`:
-  1. Commits all changes in the task worktree.
-  2. Merges the task branch back into the `parent_branch`.
-  3. Marks the task as **Stale** for cleanup.
+  1. **Integrity Check**: Verifies that a centralized design brief exists.
+  2. **Hygiene Check**: Scans for untracked files in the worktree.
+  3. Commits all changes in the task worktree.
+  4. Merges the task branch back into the `parent_branch`.
+  5. **Auto-Cleanup**: Automatically removes the worktree and audit-logs to investigations.
+  6. Marks the task as **Done**.
 
 - `orch task list`: View all active and stale tasks.
 - `orch status`: View active task, profile, and session integrity.

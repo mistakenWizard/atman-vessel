@@ -29,9 +29,9 @@ Add the following to your `settings.json` (usually in `~/.gemini/settings.json` 
 ## 2. Available Tools
 Once connected, the following tools become available to the agent:
 
-- **`start_task`**: Creates a worktree and launches a specialist **Minion**.
+- **`start_task`**: Creates a worktree and launches a specialist **Minion**. Now automatically scaffolds a plan in the centralized investigations layer.
   - Params: `slug` (string), `profile` (string).
-- **`finish_task`**: Commits and merges results from a Minion worktree.
+- **`finish_task`**: Commits and merges results from a Minion worktree. Now performs a centralized brief check and automatic worktree cleanup.
   - Params: `slug` (string).
 - **`switch_profile`**: Changes the active vessel for the current session.
   - Params: `profile` (string).
