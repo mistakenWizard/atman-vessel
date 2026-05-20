@@ -295,10 +295,17 @@ pub struct Provenance<T> {
     pub source: String,
     pub session_id: String,
     pub timestamp: DateTime<Utc>,
+    #[serde(default = "default_confidence")]
     pub confidence: f32,
     pub status: ProvenanceStatus,
+    #[serde(default)]
     pub classification: Option<DataClassification>,
+    #[serde(default)]
     pub signature: Option<String>,
+}
+
+fn default_confidence() -> f32 {
+    1.0
 }
 
 impl<T> Provenance<T> {
@@ -412,10 +419,16 @@ impl Lock {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Profile {
     pub name: String,
+    #[serde(default = "default_version")]
+    pub version: u64,
     pub provider: String,
     pub root: PathBuf,
     pub role: Option<String>,
     pub default_classification: DataClassification,
+}
+
+fn default_version() -> u64 {
+    1
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -441,6 +454,7 @@ impl<T: Serialize + Deserialize<'static> + Clone + PartialEq> MergeableList<T> {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SessionState {
+    #[serde(default)]
     pub goal: Option<Provenance<String>>,
     pub verified_facts: MergeableList<String>,
     pub blockers: MergeableList<String>,
@@ -455,14 +469,19 @@ pub struct Session {
     pub version: u64,
     pub state_status: StateStatus,
     pub classification: DataClassification,
+    #[serde(default)]
     pub active_profile: Option<Provenance<String>>,
+    #[serde(default)]
     pub current_task: Option<Provenance<String>>,
     pub state: SessionState,
     pub last_updated: DateTime<Utc>,
     #[serde(skip)]
     pub loaded_at: DateTime<Utc>,
+    #[serde(default)]
     pub last_verified_at: Option<DateTime<Utc>>,
+    #[serde(default)]
     pub profiles: HashMap<String, Profile>,
+    #[serde(default)]
     pub metadata: HashMap<String, String>,
 }
 
@@ -500,6 +519,19 @@ impl Session {
             serde_json::from_str(&content).with_context(|| "Failed to parse session JSON")?;
         session.loaded_at = Utc::now();
         Ok(session)
+    }
+
+    pub fn save_init<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        let path = path.as_ref();
+        self.version = 1;
+        self.last_updated = Utc::now();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        self.loaded_at = Utc::now();
+        Ok(())
     }
 
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
@@ -552,7 +584,7 @@ impl Session {
 
         // Promote Goal
         if let Some(ref mut goal) = self.state.goal {
-            if goal.status != ProvenanceStatus::Verified {
+            if goal.status == ProvenanceStatus::Observed || goal.status == ProvenanceStatus::Asserted {
                 goal.status = ProvenanceStatus::Verified;
                 promoted += 1;
             }
@@ -560,23 +592,7 @@ impl Session {
 
         // Promote Facts
         for item in &mut self.state.verified_facts.items {
-            if item.status != ProvenanceStatus::Verified {
-                item.status = ProvenanceStatus::Verified;
-                promoted += 1;
-            }
-        }
-
-        // Promote Blockers
-        for item in &mut self.state.blockers.items {
-            if item.status != ProvenanceStatus::Verified {
-                item.status = ProvenanceStatus::Verified;
-                promoted += 1;
-            }
-        }
-
-        // Promote Next Actions
-        for item in &mut self.state.next_actions.items {
-            if item.status != ProvenanceStatus::Verified {
+            if item.status == ProvenanceStatus::Observed || item.status == ProvenanceStatus::Asserted {
                 item.status = ProvenanceStatus::Verified;
                 promoted += 1;
             }
@@ -817,7 +833,7 @@ impl Session {
         fs::create_dir_all(profile_dir)?;
 
         let mut session = Session::new();
-        session.save(path.join(".orchestrator/session.json"))?;
+        session.save_init(path.join(".orchestrator/session.json"))?;
         Ok(session)
     }
 
@@ -1558,6 +1574,7 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                                 if !session.profiles.contains_key(p) {
                                     session.profiles.insert(p.to_string(), Profile {
                                         name: p.to_string(),
+                                        version: 1,
                                         provider: "google".to_string(),
                                         root: profile_root.clone(),
                                         role: None,
@@ -1977,11 +1994,12 @@ async fn main() -> Result<()> {
                     profile.clone(),
                     Profile {
                         name: profile.clone(),
+                        version: 1,
                         provider: "google".to_string(),
                         root: profile_root.clone(),
                         role: None,
                         default_classification: DataClassification::Internal,
-                    },
+                    }
                 );
             }
 
@@ -2073,11 +2091,12 @@ async fn main() -> Result<()> {
                     profile.clone(),
                     Profile {
                         name: profile.clone(),
+                        version: 1,
                         provider: "google".to_string(),
                         root: profile_root.clone(),
                         role: None,
                         default_classification: DataClassification::Internal,
-                    },
+                    }
                 );
             }
 

@@ -12,7 +12,7 @@ Before starting work, check the latest daily logs and the relevant projects/atma
 2. Create/Update relevant feature/design/bug docs in projects/atman-vessel/.
 3. Provide a structured handoff in projects/atman-vessel/handoffs/ if work is continuing.
 
-# AtmanVessel Project Standards (v1.6.0)
+# AtmanVessel Project Standards (v1.7.0)
 
 ## 1. Core Architecture: Soul & Minion
 AtmanVessel is a deterministic orchestration framework that treats AI models as disposable **Minions** (Vessels) while maintaining a persistent **Soul** (Project State).
@@ -38,7 +38,7 @@ AtmanVessel is a deterministic orchestration framework that treats AI models as 
 - **Minions**: Spawned in isolated git worktrees.
 
 ### Execution Workflow:
-1. **Initialize**: `orch init` (Scaffolds local state).
+1. **Initialize**: `orch init` (Scaffolds local state). **Idempotent in v1.7.0.**
 2. **Start Task**: `orch task start <slug>` (Creates worktree & launches minion).
 3. **Worktree Isolation**: Perform all implementation/testing inside the `.worktrees/task-<slug>/` directory.
 4. **Finish & Merge**: `orch task finish <slug>` (Commits and merges results back to the parent branch).
@@ -51,6 +51,10 @@ AtmanVessel is a deterministic orchestration framework that treats AI models as 
 - **Build**: `orch status` (Auto-builds) or `cd src-rust && cargo build`.
 - **Test**: `cd src-rust && cargo test` (Mandatory before PRs).
 - **Style**: Standard `cargo fmt`. Avoid unsafe code.
+
+### Robustness (v1.7.0+):
+- **Schema Resilience**: All core structs use `serde(default)` and versioning to prevent parsing failures during schema evolution.
+- **Idempotent Init**: `orch init` safely resets session state without version mismatch blockers.
 
 ---
 
