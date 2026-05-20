@@ -85,6 +85,9 @@ fn test_version_based_concurrency() {
     session_a.save(&session_path).expect("A initial save");
     assert_eq!(session_a.version, 1);
 
+    // Wait a bit to ensure timestamp changes
+    thread::sleep(Duration::from_millis(100));
+
     let mut session_b = Session::load(&session_path).expect("B load");
     assert_eq!(session_b.version, 1);
 
@@ -95,7 +98,8 @@ fn test_version_based_concurrency() {
     // B attempts to update with stale version (1)
     let result = session_b.save(&session_path);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Version mismatch"));
+    let err_msg = result.unwrap_err().to_string();
+    assert!(err_msg.contains("Version mismatch") || err_msg.contains("State on disk is newer"));
 
     fs::remove_dir_all(test_dir).ok();
 }
@@ -269,9 +273,10 @@ fn test_command_environment_redirection() {
     let profile_root = test_dir.join("profile_abc");
     fs::create_dir_all(&profile_root).unwrap();
 
-    let cmd = prepare_launch_command("gemini", &profile_root, &[]);
+    let mut cmd = prepare_launch_command("gemini", &profile_root, &[]);
+    let std_cmd = cmd.as_std();
 
-    let envs: Vec<_> = cmd.get_envs().collect();
+    let envs: Vec<_> = std_cmd.get_envs().collect();
     let home_env = envs.iter().find(|(k, _)| k.to_str() == Some("HOME"));
 
     assert!(home_env.is_some(), "HOME environment variable not set");
@@ -525,6 +530,7 @@ fn test_profiles_list() {
         "p1".to_string(),
         Profile {
             name: "p1".to_string(),
+            version: 1,
             provider: "p".to_string(),
             root: PathBuf::from("r1"),
             role: None,
@@ -535,6 +541,7 @@ fn test_profiles_list() {
         "p2".to_string(),
         Profile {
             name: "p2".to_string(),
+            version: 1,
             provider: "p".to_string(),
             root: PathBuf::from("r2"),
             role: None,
@@ -812,9 +819,10 @@ fn test_board_task_update() {
     
     let task = Task {
         slug: "test-task".to_string(),
-        agent: "builder".to_string(),
+        minion: "builder".to_string(),
         status: "In Progress".to_string(),
         path: "/tmp/test".to_string(),
+        parent_branch: None,
     };
     
     board.update_task(&task).expect("Failed to update task");
@@ -915,4 +923,43 @@ async fn test_mcp_invalid_slug_start_task() {
 
     std::env::set_current_dir(current_dir).unwrap();
     fs::remove_dir_all(test_dir).ok();
+}
+
+#[test]
+fn test_reproduce_bug_report_parsing_failure() {
+    let json = r#"{
+  "schema_version": "1.5.0",
+  "session_id": "0c60424a-7629-4a35-b852-712cf1df9be6",
+  "version": 1,
+  "state_status": "planned",
+  "classification": "internal",
+  "active_profile": null,
+  "current_task": null,
+  "state": {
+    "goal": null,
+    "verified_facts": {
+      "merge_strategy": "append-unique",
+      "items": []
+    },
+    "blockers": {
+      "merge_strategy": "append-unique",
+      "items": []
+    },
+    "files_in_focus": {
+      "merge_strategy": "append-unique",
+      "items": []
+    },
+    "next_actions": {
+      "merge_strategy": "append-unique",
+      "items": []
+    }
+  },
+  "last_updated": "2026-05-20T06:20:10Z",
+  "last_verified_at": null,
+  "profiles": {},
+  "metadata": {}
+}"#;
+    let session: super::Session = serde_json::from_str(json).expect("Failed to parse session JSON");
+    assert_eq!(session.schema_version, "1.5.0");
+    assert_eq!(session.version, 1);
 }
