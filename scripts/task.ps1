@@ -38,7 +38,7 @@ if ($Action -eq "start") {
     } else {
         Write-Host "Found existing worktree at $TaskDir."
     }
-    Update-Board "In Progress" "Gemini"
+    Update-Board "In Progress" "Antigravity"
     Write-Host "✅ Task initialized. Please cd to $TaskDir to begin." -ForegroundColor Green
 }
 elseif ($Action -eq "handoff") {

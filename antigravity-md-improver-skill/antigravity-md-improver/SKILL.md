@@ -1,11 +1,11 @@
 ---
-name: gemini-md-improver
-description: Audits and improves project instruction files (GEMINI.md) to ensure optimal AI context and execution accuracy. Use when project instructions are stale, missing key workflows, or lack actionable technical standards.
+name: agy-md-improver
+description: Audits and improves project instruction files (.antigravity.md) to ensure optimal AI context and execution accuracy. Use when project instructions are stale, missing key workflows, or lack actionable technical standards.
 ---
 
-# Gemini MD Improver
+# Antigravity MD Improver
 
-This skill evaluates and hardens project instruction files (`GEMINI.md`) to maintain high-signal context for AI agents.
+This skill evaluates and hardens project instruction files (`.antigravity.md`) to maintain high-signal context for AI agents.
 
 ## Core Mandates
 
@@ -18,14 +18,15 @@ This skill evaluates and hardens project instruction files (`GEMINI.md`) to main
 
 ### 1. Discovery
 Search for all instruction files in the repository:
-- Root `./GEMINI.md`
-- Subdirectory `./src/**/GEMINI.md`
+- Root `./.antigravity.md`
+- Subdirectory `./src/**/.antigravity.md`
 - Context files like `README.md` or `CONTRIBUTING.md` that contain workflows.
 
 ### 2. Quality Audit
 Evaluate files against these criteria:
 - **Build/Test/Deploy (High)**: Accurate commands for the current tech stack.
 - **Architecture (High)**: Mapping of key directories and system boundaries.
+- **Antigravity 2.0 Standards (High)**: Ensure `.antigravity.md` is used, permission-based trust models are documented, and profile-specific isolation is respected.
 - **Gotchas/Idioms (Medium)**: Project-specific quirks (e.g., "Always use X instead of Y").
 - **Currency (High)**: Alignment with `package.json`, `Cargo.toml`, `requirements.txt`, etc.
 
@@ -35,7 +36,7 @@ Evaluate files against these criteria:
 - **F (<60)**: Missing, generic, or wildly inaccurate.
 
 ### 3. Reporting
-Output a `GEMINI.md Quality Report`:
+Output a `.antigravity.md Quality Report`:
 - **File**: [Path]
 - **Score**: [0-100]
 - **Findings**: [List specific gaps found via codebase search]

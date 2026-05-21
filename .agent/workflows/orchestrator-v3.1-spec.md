@@ -48,9 +48,9 @@ A model-readable Markdown summary generated dynamically from `session.json`. It 
 | Profile | Provider | Primary Role | Secondary Role |
 | :--- | :--- | :--- | :--- |
 | **`chief`** | Codex | Planning, Design, Integration | Code Review |
-| **`builder`** | Gemini | Implementation, Refactoring | Prototyping |
-| **`auditor`** | Gemini | Testing, Verification, Triage | Bug Hunting |
-| **`researcher`** | Gemini | Documentation, Analysis | Post-mortems |
+| **`builder`** | Antigravity | Implementation, Refactoring | Prototyping |
+| **`auditor`** | Antigravity | Testing, Verification, Triage | Bug Hunting |
+| **`researcher`** | Antigravity | Documentation, Analysis | Post-mortems |
 
 ---
 
