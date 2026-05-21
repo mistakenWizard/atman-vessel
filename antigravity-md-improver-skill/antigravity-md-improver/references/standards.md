@@ -1,4 +1,4 @@
-# GEMINI.md Quality Standards
+# .antigravity.md Quality Standards
 
 ## 1. Commands & Workflows (Weight: 40%)
 Instructions must be derived from source-of-truth configuration files:
@@ -7,8 +7,7 @@ Instructions must be derived from source-of-truth configuration files:
 - **Python**: `pyproject.toml` or `Makefile`.
 - **Go**: `go.mod` and common `Taskfile` or `Makefile`.
 
-**Good**: `Run tests: npm run test:unit -- --watch`
-**Bad**: `Run the tests using the test runner.`
+**Antigravity 2.0**: All CLI commands should use `agy` instead of `gemini`.
 
 ## 2. Architecture & Mapping (Weight: 30%)
 High-signal mapping of the directory structure.
@@ -20,6 +19,8 @@ Capture project-specific patterns that a general model wouldn't know.
 - "We use manual dependency injection instead of a framework."
 - "Avoid using the `fs` module; use our internal `vfs` wrapper."
 - "All dates must be UTC and stored as ISO-8601 strings."
+- **Permissions**: Document if `/permissions` must be granted for specific directories in Antigravity.
+- **Profiles**: Document if the project depends on specific named profiles (e.g., `chief`, `builder`).
 
 ## 4. Signal-to-Noise Ratio (Weight: 10%)
 - Remove: "This project is built with React and is designed to be scalable."

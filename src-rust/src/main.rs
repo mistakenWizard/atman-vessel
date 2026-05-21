@@ -133,8 +133,8 @@ enum Commands {
         profile: String,
         #[arg(short, long)]
         worktree: Option<PathBuf>,
-        /// CLI to launch (gemini or codex)
-        #[arg(default_value = "gemini")]
+        /// CLI to launch (agy or gemini)
+        #[arg(default_value = "agy")]
         cli: String,
         /// Create a new worktree for this session
         #[arg(long)]
@@ -972,27 +972,38 @@ impl Session {
 
 pub fn bootstrap_profile(profile_root: &Path, project_root: &Path, profile_name: &str) -> Result<()> {
     // 1. Try to bootstrap from local project profile storage
-    let local_source = project_root.join(".orchestrator/profiles").join(profile_name).join(".gemini");
-    if local_source.exists() {
-        let target_dir = profile_root.join(".gemini");
-        return bootstrap_profile_from_source(&local_source, &target_dir);
+    let local_source_agy = project_root.join(".orchestrator/profiles").join(profile_name).join(".gemini/antigravity-cli");
+    let local_source_gem = project_root.join(".orchestrator/profiles").join(profile_name).join(".gemini");
+    let target_dir = profile_root.join(".gemini/antigravity-cli");
+    
+    if local_source_agy.exists() {
+        return bootstrap_profile_from_source(&local_source_agy, &target_dir);
+    } else if local_source_gem.exists() {
+        // Migration: bootstrap from old gemini folder if new one doesn't exist
+        return bootstrap_profile_from_source(&local_source_gem, &target_dir);
     }
 
     // 2. Try to bootstrap from global system profile storage
     if let Ok(global_system) = get_global_system_path() {
-        let global_source = global_system.join("profiles").join(profile_name).join(".gemini");
-        if global_source.exists() {
-            let target_dir = profile_root.join(".gemini");
-            return bootstrap_profile_from_source(&global_source, &target_dir);
+        let global_source_agy = global_system.join("profiles").join(profile_name).join(".gemini/antigravity-cli");
+        let global_source_gem = global_system.join("profiles").join(profile_name).join(".gemini");
+        if global_source_agy.exists() {
+            return bootstrap_profile_from_source(&global_source_agy, &target_dir);
+        } else if global_source_gem.exists() {
+            return bootstrap_profile_from_source(&global_source_gem, &target_dir);
         }
     }
 
     // 3. Fallback to global home directory (for initial profile setup)
-    let source_dir = std::env::home_dir()
-        .map(|p| p.join(".gemini"))
-        .context("Could not find home directory")?;
-    let target_dir = profile_root.join(".gemini");
-    bootstrap_profile_from_source(&source_dir, &target_dir)
+    let home_dir = std::env::home_dir().context("Could not find home directory")?;
+    let source_dir_agy = home_dir.join(".gemini/antigravity-cli");
+    let source_dir_gem = home_dir.join(".gemini");
+    
+    if source_dir_agy.exists() {
+        bootstrap_profile_from_source(&source_dir_agy, &target_dir)
+    } else {
+        bootstrap_profile_from_source(&source_dir_gem, &target_dir)
+    }
 }
 
 pub fn bootstrap_profile_from_source(source_dir: &Path, profile_path: &Path) -> Result<()> {
@@ -1006,6 +1017,7 @@ pub fn bootstrap_profile_from_source(source_dir: &Path, profile_path: &Path) -> 
         "state.json",
         "oauth_creds.json",
         "google_accounts.json",
+        "mcp_config.json",
     ];
 
     for file in &files {
@@ -1027,6 +1039,7 @@ pub fn prepare_launch_command(
     let mut cmd = tokio::process::Command::new(cli);
     // Harden path redirection to ensure CLI finds the correct profile credentials
     cmd.env("HOME", profile_path);
+    cmd.env("ANTIGRAVITY_CLI_HOME", profile_path);
     cmd.env("GEMINI_CLI_HOME", profile_path);
     cmd.env("XDG_CONFIG_HOME", profile_path);
     cmd.env("GEMINI_CLI_TRUST_WORKSPACE", "true");
@@ -1548,7 +1561,7 @@ async fn handle_mcp_request(req: McpRequest) -> McpResponse {
                                 // We spawn in background for MCP to not block the server indefinitely
                                 tokio::spawn(async move {
                                     if let Ok(mut session_inner) = Session::load(&wt_session_path) {
-                                        let _ = run_cli("gemini", &profile_root, &[], &wt_session_path, &mut session_inner, false).await;
+                                        let _ = run_cli("agy", &profile_root, &[], &wt_session_path, &mut session_inner, false).await;
                                     }
                                 });
 
@@ -1767,7 +1780,7 @@ async fn main() -> Result<()> {
                     let profile_root = wt_path.join(".orchestrator/profiles").join(&profile);
 
                     // Prepare the launch command
-                    let mut cmd = prepare_launch_command("gemini", &profile_root, &[]);
+                    let mut cmd = prepare_launch_command("agy", &profile_root, &[]);
                     
                     // IMPORTANT: For CLI background launch, we do NOT set kill_on_drop(true)
                     // and we do NOT await wait_with_output.
@@ -2112,7 +2125,7 @@ async fn main() -> Result<()> {
             println!("Handoff regenerated for switch to {}", profile);
 
             // Default to 'gemini' for switch if not otherwise known
-            run_cli("gemini", &profile_root, &[], session_path, &mut session, false).await?;
+            run_cli("agy", &profile_root, &[], session_path, &mut session, false).await?;
         }
         Commands::Recover => {
             println!("💊 Recovering session...");
@@ -2281,7 +2294,7 @@ async fn main() -> Result<()> {
             println!("Session resumed with profile: {}", profile_name);
 
             // Default to 'gemini' for resume if not otherwise known
-            run_cli("gemini", &profile_root, &[], session_path, &mut session, false).await?;
+            run_cli("agy", &profile_root, &[], session_path, &mut session, false).await?;
         }
         Commands::Status => {
             let session = Session::load(session_path)?;

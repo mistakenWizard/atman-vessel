@@ -32,12 +32,12 @@ Regardless of task type, you MUST:
 - `orch status`: Check current session health and active profile.
 - `orch task start <slug>`: Spawn a new specialist Minion in an isolated worktree.
 - `orch task finish <slug>`: Commit and merge your results back to the parent branch.
-- `orch launch --profile <name> gemini -- -p "..."`: Delegate a sub-task. **MANDATORY:** Use the high-signal template at `scripts/task_template.md` for your delegation prompt.
+- `orch launch --profile <name> agy -- -p "..."`: Delegate a sub-task. **MANDATORY:** Use the high-signal template at `scripts/task_template.md` for your delegation prompt.
 - `orch freeze -m "..."`: Save your progress and validated facts to the global session.
 
 ## 3. Communication Protocols
 - **Provenence**: Always attribute your findings. Use `orch verify` to promote asserted facts to verified ones.
-- **Autonomous Mode**: You are expected to operate with `GEMINI_CLI_TRUST_WORKSPACE=true`. Do not ask for user confirmation for file edits or builds.
+- **Autonomous Mode**: You are expected to operate with Antigravity CLI. Do not ask for user confirmation for file edits or builds.
 
 ## 4. Worktree Isolation & Cleanup
 When spawned for a task, you operate in `.worktrees/session-<id>-<slug>/`. 
@@ -47,3 +47,4 @@ When spawned for a task, you operate in `.worktrees/session-<id>-<slug>/`.
 ## 5. Timeouts & Continuity
 - **Strict Timeout**: Every command you run has a **60-second limit**. If you exceed this, the orchestrator will kill your process.
 - **Incremental Work**: Breakdown large tasks into smaller sub-tasks. Checkpoint your state frequently using `orch freeze`.
+`orch freeze`.

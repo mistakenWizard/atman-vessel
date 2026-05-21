@@ -5,7 +5,7 @@
 Build a local AI orchestration system for development and knowledge work that:
 
 - uses `Codex CLI` as the primary planner, dispatcher, and integrator
-- supports multiple pre-authenticated `Gemini CLI` profiles as specialized workers
+- supports multiple pre-authenticated `Antigravity CLI` profiles as specialized workers
 - preserves task continuity across profile, provider, terminal, and crash boundaries
 - avoids repeated login friction
 - supports coding, docs, personal writing, trading research, backtesting, and system maintenance
@@ -40,7 +40,7 @@ The design stays conservative.
 
 Allowed:
 
-- pre-authenticate Gemini profiles up front
+- pre-authenticate Antigravity profiles up front
 - manually trigger switching between profiles
 - automatically carry forward context through project-local state
 - route work by real role or environment fit
@@ -61,10 +61,10 @@ Safe framing:
 
 Risky framing:
 
-- "pick whichever Gemini account should handle this so no account hits limits"
+- "pick whichever Antigravity account should handle this so no account hits limits"
 
 OpenAI’s terms explicitly prohibit circumventing rate limits or restrictions.
-For Gemini, the exact multi-profile workflow is not explicitly blessed or banned in the sources reviewed, so the system uses explicit user-triggered switching and avoids load balancing.
+For Antigravity, the exact multi-profile workflow is not explicitly blessed or banned in the sources reviewed, so the system uses explicit user-triggered switching and avoids load balancing.
 
 ## 4. High-Level Architecture
 
@@ -155,7 +155,7 @@ Responsibilities:
 - approve takeover direction
 - approve global policy changes where needed
 
-### `builder` (`Gemini`)
+### `builder` (`Antigravity`)
 
 Primary mission:
 
@@ -167,7 +167,7 @@ Secondary capabilities:
 - prototyping
 - debugging
 
-### `systems` (`Gemini`)
+### `systems` (`Antigravity`)
 
 Primary mission:
 
@@ -182,7 +182,7 @@ Secondary capabilities:
 - local automation
 - CI/developer tooling
 
-### `reviewer` (`Gemini`)
+### `reviewer` (`Antigravity`)
 
 Primary mission:
 
@@ -196,7 +196,7 @@ Secondary capabilities:
 - architecture critique
 - test-gap analysis
 
-### `writer` (`Gemini`)
+### `writer` (`Antigravity`)
 
 Primary mission:
 
@@ -215,7 +215,7 @@ Boundary:
 
 - legal material is drafting support only, not legal advice
 
-### `quant` (`Gemini`)
+### `quant` (`Antigravity`)
 
 Primary mission:
 
@@ -233,7 +233,7 @@ Boundary:
 
 - research support only, not autonomous trading authority
 
-### `ops` (`Gemini`)
+### `ops` (`Antigravity`)
 
 Primary mission:
 
@@ -247,7 +247,7 @@ Secondary capabilities:
 - cross-repo standards
 - usage hygiene
 
-### `recovery` (`Gemini`)
+### `recovery` (`Antigravity`)
 
 Primary mission:
 
@@ -290,7 +290,7 @@ Candidate strategy:
 - isolate provider state per profile
 - bootstrap only files proven necessary by probes
 
-Current Gemini prototype checks may include:
+Current Antigravity prototype checks may include:
 
 - `projects.json`
 - `google_accounts.json`
@@ -760,9 +760,9 @@ Explicit user or `chief` approval is required before changing global:
 
 Use official provider features where helpful.
 
-For Gemini CLI, evaluate:
+For Antigravity CLI, evaluate:
 
-- `GEMINI.md`
+- `.antigravity.md`
 - `/chat save`
 - `/chat resume`
 - `/chat share`
@@ -818,7 +818,7 @@ Differentiator:
 ### Phase 1: Probe Harness
 
 - inspect CLI config/auth/session locations
-- validate Gemini profile isolation on WSL/Linux
+- validate Antigravity profile isolation on WSL/Linux
 - test Windows behavior separately
 - test no-auth-bleed assumptions
 - define fallback behavior
