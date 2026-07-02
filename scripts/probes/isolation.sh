@@ -10,8 +10,8 @@ OUTPUT_FILE="$PROBE_DIR/provider-isolation.json"
 echo "Running Probe 1: Provider Profile Isolation (Hardened)..."
 
 # Create two profile directories
-PROFILE_A=$(mktemp -d -p /tmp gemini-profile-A.XXXXXX)
-PROFILE_B=$(mktemp -d -p /tmp gemini-profile-B.XXXXXX)
+PROFILE_A=$(mktemp -d -p /tmp agy-profile-A.XXXXXX)
+PROFILE_B=$(mktemp -d -p /tmp agy-profile-B.XXXXXX)
 
 # Cleanup function
 cleanup() {
@@ -21,42 +21,42 @@ trap cleanup EXIT
 
 # 1. Bootstrap Profile A with REAL system config
 echo "Bootstrapping Profile A with real system config..."
-mkdir -p "$PROFILE_A/.gemini"
-cp "$HOME/.gemini/google_accounts.json" "$PROFILE_A/.gemini/"
-cp "$HOME/.gemini/oauth_creds.json" "$PROFILE_A/.gemini/"
-cp "$HOME/.gemini/settings.json" "$PROFILE_A/.gemini/"
-cp "$HOME/.gemini/projects.json" "$PROFILE_A/.gemini/"
-cp "$HOME/.gemini/state.json" "$PROFILE_A/.gemini/"
+mkdir -p "$PROFILE_A/.agy"
+cp "$HOME/.agy/google_accounts.json" "$PROFILE_A/.agy/"
+cp "$HOME/.agy/oauth_creds.json" "$PROFILE_A/.agy/"
+cp "$HOME/.agy/settings.json" "$PROFILE_A/.agy/"
+cp "$HOME/.agy/projects.json" "$PROFILE_A/.agy/"
+cp "$HOME/.agy/state.json" "$PROFILE_A/.agy/"
 
 # 2. Bootstrap Profile B with SIMULATED different identity
 echo "Bootstrapping Profile B with simulated identity B..."
-mkdir -p "$PROFILE_B/.gemini"
-cp "$PROFILE_A/.gemini/"* "$PROFILE_B/.gemini/"
+mkdir -p "$PROFILE_B/.agy"
+cp "$PROFILE_A/.agy/"* "$PROFILE_B/.agy/"
 # Modify Profile B's identity in the copied file (simulating a second account)
 # We assume google_accounts.json has an email we can swap
 if command -v jq &> /dev/null; then
-    jq '.selectedAccount = "simulated-b@example.com"' "$PROFILE_B/.gemini/google_accounts.json" > "$PROFILE_B/.gemini/google_accounts.json.tmp" && mv "$PROFILE_B/.gemini/google_accounts.json.tmp" "$PROFILE_B/.gemini/google_accounts.json"
+    jq '.selectedAccount = "simulated-b@example.com"' "$PROFILE_B/.agy/google_accounts.json" > "$PROFILE_B/.agy/google_accounts.json.tmp" && mv "$PROFILE_B/.agy/google_accounts.json.tmp" "$PROFILE_B/.agy/google_accounts.json"
 else
-    sed -i 's/"email": ".*"/"email": "simulated-b@example.com"/' "$PROFILE_B/.gemini/google_accounts.json"
+    sed -i 's/"email": ".*"/"email": "simulated-b@example.com"/' "$PROFILE_B/.agy/google_accounts.json"
 fi
 
 # 3. Verify A
 echo "Checking Profile A identity..."
-IDENTITY_A=$(HOME="$PROFILE_A" gemini --prompt "Say only 'authenticated_a' if you can reach the model." --approval-mode plan 2>&1)
+IDENTITY_A=$(HOME="$PROFILE_A" agy --prompt "Say only 'authenticated_a' if you can reach the model." --approval-mode plan 2>&1)
 
 # 4. Verify B
 echo "Checking Profile B identity..."
 # Since B has a modified google_accounts.json, it might fail auth or show the new identity if the CLI supports it.
 # If the CLI is sensitive to the account email, it should at least not show A's identity.
-IDENTITY_B=$(HOME="$PROFILE_B" gemini --prompt "Say only 'authenticated_b' if you can reach the model." --approval-mode plan 2>&1)
+IDENTITY_B=$(HOME="$PROFILE_B" agy --prompt "Say only 'authenticated_b' if you can reach the model." --approval-mode plan 2>&1)
 
 # 5. Switch back to A and verify
 echo "Switching back to Profile A..."
-IDENTITY_A_RECHECK=$(HOME="$PROFILE_A" gemini --prompt "Say only 'still_authenticated_a'" --approval-mode plan 2>&1)
+IDENTITY_A_RECHECK=$(HOME="$PROFILE_A" agy --prompt "Say only 'still_authenticated_a'" --approval-mode plan 2>&1)
 
 # 6. Verify no file contamination (Profile A files should not have Profile B's simulated email)
 CONTAMINATION_DETECTED=false
-if grep -q "simulated-b@example.com" "$PROFILE_A/.gemini/google_accounts.json"; then
+if grep -q "simulated-b@example.com" "$PROFILE_A/.agy/google_accounts.json"; then
     CONTAMINATION_DETECTED=true
     echo "❌ CONTAMINATION: Profile A files modified by Profile B actions!"
 fi
