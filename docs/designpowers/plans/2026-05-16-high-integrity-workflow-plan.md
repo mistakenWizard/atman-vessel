@@ -12,11 +12,11 @@
 
 ## Task 1: Update Agent Standards & Guides
 
-**Files:** `AGENT_GUIDE.md`, `AGENT_STANDARDS.md`, `GEMINI.md`
+**Files:** `AGENT_GUIDE.md`, `AGENT_STANDARDS.md`, `.antigravity.md`
 
 - [ ] Step 1: Add "Discovery First" mandate to `AGENT_GUIDE.md`.
 - [ ] Step 2: Update `AGENT_STANDARDS.md` to include TDD and Designpowers as mandatory skills for all tasks.
-- [ ] Step 3: Refine the "YOLO" mode instructions in `GEMINI.md` to prioritize planning over speed.
+- [ ] Step 3: Refine the "YOLO" mode instructions in `.antigravity.md` to prioritize planning over speed.
 
 **Accessibility check:** Ensure standards are written in plain, unambiguous language for AI interpretation.
 
@@ -53,7 +53,7 @@
 
 ## Task 4: Standardize Investigation Logs
 
-**Files:** `GEMINI.md`, `AGENT_GUIDE.md`
+**Files:** `.antigravity.md`, `AGENT_GUIDE.md`
 
 - [ ] Step 1: Enforce the use of `/mnt/e/investigations/` for all session summaries.
 - [ ] Step 2: Create a `daily/YYYY-MM-DD/` auto-logger shim in `orch`.
