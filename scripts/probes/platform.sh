@@ -27,8 +27,8 @@ if printenv | grep -q "/mnt/c/Users"; then
     HAS_WIN_VARS=true
 fi
 
-# CLI config behavior (checking if gemini is available as a command)
-GEMINI_PATH=$(which gemini)
+# CLI config behavior (checking if agy is available as a command)
+GEMINI_PATH=$(which agy)
 
 # Write results
 cat <<EOF > "$OUTPUT_FILE"
