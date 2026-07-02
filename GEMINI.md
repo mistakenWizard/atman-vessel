@@ -56,7 +56,7 @@ AtmanVessel is a deterministic orchestration framework that treats AI models as 
 
 ## 4. Operational "High-Integrity" Mode
 All minion launches must be **Non-Interactive** and **Autonomous** but disciplined.
-- **Env Var**: `GEMINI_CLI_TRUST_WORKSPACE=true` is required.
+- **Env Var**: `Antigravity autonomous mode=true` is required.
 - **Mandate**: Speed is secondary to **Correctness** and **Integrity**.
 - **Execution Lifecycle**: 
   1. **Research & Discovery** (Mandatory)
@@ -70,5 +70,5 @@ All minion launches must be **Non-Interactive** and **Autonomous** but disciplin
 
 ## 5. Multi-Account Identity
 To rotate identities and bypass rate limits, use the named fleet:
-1. `orch launch --profile <name> gemini -- -p "..."`
+1. `orch launch --profile <name> agy -- -p "..."`
 2. Authenticated Profiles: `gayatri`, `gvklive`, `hilarioushabit`, `hollowhistory`, `hypnotichallway`, `mistakenWizard`.

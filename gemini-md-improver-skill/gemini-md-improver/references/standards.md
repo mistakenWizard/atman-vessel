@@ -1,4 +1,4 @@
-# GEMINI.md Quality Standards
+# .antigravity.md Quality Standards
 
 ## 1. Commands & Workflows (Weight: 40%)
 Instructions must be derived from source-of-truth configuration files:

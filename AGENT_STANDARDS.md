@@ -1,6 +1,6 @@
 # Multi-Agent Coordination Standards (Task-Centric)
 
-This repository is maintained concurrently by multiple AI agents (Antigravity, Gemini, Codex, Claude). 
+This repository is maintained concurrently by multiple AI agents (Antigravity, Antigravity, Codex, Claude). 
 
 To ensure isolation and prevent conflicts, we use **Task-Based Worktrees**. This allows multiple agents—even of the same type—to work on different tasks simultaneously without file locks or build interference.
 
@@ -39,7 +39,7 @@ The board is the single source of truth for task ownership and worktree location
 | Field | Description |
 | :--- | :--- |
 | **Task** | Short description of the goal. |
-| **Agent** | The agent currently owning the task (e.g., `Claude-1`, `Gemini-Alpha`). |
+| **Agent** | The agent currently owning the task (e.g., `Claude-1`, `Antigravity-Alpha`). |
 | **Status** | `Backlog`, `In Progress`, `Paused`, `Done`. |
 | **Worktree** | The absolute path to the task's worktree. |
 

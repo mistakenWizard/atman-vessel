@@ -3,16 +3,16 @@
 AtmanVessel provides a JSON-RPC 2.0 MCP server to allow agents to control the orchestration framework using standard tools.
 
 ## 1. Registration
-The AtmanVessel MCP server should be registered in your Gemini/Codex CLI configuration.
+The AtmanVessel MCP server should be registered in your Antigravity/Codex CLI configuration.
 
 ### Auto-Setup (Recommended)
 Run the following from the project root:
 ```bash
-gemini mcp add atman-vessel $(pwd)/orch.sh mcp
+agy mcp add atman-vessel $(pwd)/orch.sh mcp
 ```
 
 ### Manual Configuration
-Add the following to your `settings.json` (usually in `~/.gemini/settings.json` or project-local `.gemini/settings.json`):
+Add the following to your `settings.json` (usually in `~/.agy/settings.json` or project-local `.agy/settings.json`):
 
 ```json
 {
