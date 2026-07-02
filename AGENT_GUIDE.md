@@ -12,7 +12,7 @@ The `orch` command is available globally. You should use it to manage tasks and 
 
 - `orch status`: Check current session health and active profile.
 - `orch task start <slug>`: Spawn a new specialist in an isolated worktree.
-- `orch launch --profile <name> gemini -- -p "..."`: Delegate a sub-task to another vessel.
+- `orch launch --profile <name> agy -- -p "..."`: Delegate a sub-task to another vessel.
 - `orch freeze -m "..."`: Save your progress and validated facts to the global session.
 
 ### 5. Timeouts & Continuity
@@ -21,7 +21,7 @@ The `orch` command is available globally. You should use it to manage tasks and 
 
 ## 3. Communication Protocols
 - **Provenence**: Always attribute your findings. Use `orch verify` to promote asserted facts to verified ones.
-- **Autonomous Mode**: You are expected to operate with `GEMINI_CLI_TRUST_WORKSPACE=true`. Do not ask for user confirmation for file edits or builds.
+- **Autonomous Mode**: You are expected to operate with `Antigravity autonomous mode=true`. Do not ask for user confirmation for file edits or builds.
 
 ## 4. Worktree Isolation
 When spawned for a task, you operate in `.worktrees/task-<slug>/`. 
