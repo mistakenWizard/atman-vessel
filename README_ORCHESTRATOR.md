@@ -15,7 +15,7 @@ Scaffolds the `.orchestrator/` directory and initializes the canonical `session.
 ./orch.sh launch --profile builder --new-worktree
 ```
 - Runs pre-flight safety probes.
-- Bootstraps Gemini/Codex auth files.
+- Bootstraps Antigravity/Codex auth files.
 - Automatically creates a new isolated git worktree.
 - Launches the target CLI with `HOME` redirection.
 

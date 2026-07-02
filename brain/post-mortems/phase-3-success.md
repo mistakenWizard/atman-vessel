@@ -20,7 +20,7 @@
 - **Design Phase**: Completed by `codebase_investigator`.
 - **Test Phase (TDD)**: Completed by `generalist` (Tester).
 - **Implementation Phase**: Completed by `generalist` (Builder).
-- **Review Phase**: Final verification and merge by `gemini-cli`.
+- **Review Phase**: Final verification and merge by `agy-cli`.
 
 ## Next Phase: Phase 4 (Integration & Finalization)
 Ready for final CLI-to-Soul binding and experimental launcher replacement.

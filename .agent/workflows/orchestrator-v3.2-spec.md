@@ -17,7 +17,7 @@ The Orchestrator v3.2 is a **Deterministic Session Resumption** framework. It tr
 ### 2.1 The Vessel: Validated Prototype Strategy
 Profile isolation is achieved through **HOME Redirection**, currently validated on the local Linux/WSL environment.
 - **Strategy**: Redirect `HOME` to `.orchestrator/profiles/<name>/`.
-- **Bootstrapping**: Initializing `.gemini/projects.json` and `google_accounts.json` from the system root.
+- **Bootstrapping**: Initializing `.agy/projects.json` and `google_accounts.json` from the system root.
 - **Probe Requirement**: Before every launch, the launcher must verify:
     - Path accessibility.
     - Auth file presence.
@@ -57,13 +57,13 @@ The canonical machine-readable state file with rigorous provenance and verificat
 | Profile | Provider | Primary Mission |
 | :--- | :--- | :--- |
 | **`chief`** | Codex | Planning, Dispatching, Integration. |
-| **`builder`** | Gemini | Implementation and Refactoring. |
-| **`systems`** | Gemini | Environment, Tooling, and WSL setup. |
-| **`reviewer`** | Gemini | Code review and Regression spotting. |
-| **`writer`** | Gemini | Docs, summaries, and drafting. |
-| **`quant`** | Gemini | Trading research and backtesting support. |
-| **`ops`** | Gemini | Maintaining the agent system itself. |
-| **`recovery`** | Gemini | Triage of stuck/crashed sessions. |
+| **`builder`** | Antigravity | Implementation and Refactoring. |
+| **`systems`** | Antigravity | Environment, Tooling, and WSL setup. |
+| **`reviewer`** | Antigravity | Code review and Regression spotting. |
+| **`writer`** | Antigravity | Docs, summaries, and drafting. |
+| **`quant`** | Antigravity | Trading research and backtesting support. |
+| **`ops`** | Antigravity | Maintaining the agent system itself. |
+| **`recovery`** | Antigravity | Triage of stuck/crashed sessions. |
 
 ---
 

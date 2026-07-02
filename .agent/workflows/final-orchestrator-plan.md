@@ -5,7 +5,7 @@
 Build a local orchestrator for development workflows that:
 
 - uses `Codex CLI` as the main planner
-- can work with multiple pre-authenticated `Gemini CLI` profiles
+- can work with multiple pre-authenticated `Antigravity CLI` profiles
 - preserves context automatically across profile switches
 - avoids repeated login friction
 - works across Windows, Linux, macOS, and WSL
@@ -32,8 +32,8 @@ The `Vessel` is replaceable.
 
 The workflow should support:
 
-- logging into all Gemini profiles up front so there is no repeated auth headache
-- manually telling the project or Codex to switch to the next Gemini profile
+- logging into all Antigravity profiles up front so there is no repeated auth headache
+- manually telling the project or Codex to switch to the next Antigravity profile
 - automatic carry-forward of context so the user does not need to copy context from one agent into another manually
 
 The workflow should avoid:
@@ -55,10 +55,10 @@ Important distinction:
 
 For OpenAI, the Terms of Use dated January 1, 2026 explicitly prohibit circumventing rate limits or restrictions. Since you are only using one Codex account, that part is straightforward.
 
-For Google/Gemini, I did not find an official Google statement that explicitly says your exact workflow is allowed or forbidden. The closest official signals are:
+For Google/Antigravity, I did not find an official Google statement that explicitly says your exact workflow is allowed or forbidden. The closest official signals are:
 
-- Gemini CLI terms vary based on authentication method
-- Gemini CLI officially supports `GEMINI.md`
+- Antigravity CLI terms vary based on authentication method
+- Antigravity CLI officially supports `.antigravity.md`
 - Google documents quotas as real usage controls
 - Google prohibits interference with or circumvention of abuse protections
 
@@ -120,9 +120,9 @@ This is the `Voice`.
 The orchestrator tracks named profiles such as:
 
 - `codex-main`
-- `gemini-a`
-- `gemini-b`
-- `gemini-c`
+- `agy-a`
+- `agy-b`
+- `agy-c`
 
 Each profile records:
 
@@ -172,17 +172,17 @@ Derived artifacts such as `HANDOFF.md` and `RECOVERY.md` should never overwrite 
 2. Codex plans the task.
 3. The orchestrator updates `session.json`.
 4. The orchestrator generates `HANDOFF.md`.
-5. A Gemini profile is launched with the handoff.
-6. Gemini works.
+5. A Antigravity profile is launched with the handoff.
+6. Antigravity works.
 7. When paused or blocked, the orchestrator captures a summary and updates `session.json`.
 
 ### Switch Flow
 
-1. The user tells the project or Codex to switch to another Gemini profile.
+1. The user tells the project or Codex to switch to another Antigravity profile.
 2. The orchestrator freezes the current session.
 3. The orchestrator updates `session.json`.
 4. The orchestrator regenerates `HANDOFF.md`.
-5. The orchestrator launches the selected Gemini profile.
+5. The orchestrator launches the selected Antigravity profile.
 6. The new profile resumes from the generated handoff automatically.
 
 The user should not need to manually copy context between agents.
@@ -214,14 +214,14 @@ This makes switching operationally simple without turning it into hidden failove
 
 ### User-Triggered Only
 
-- switching to the next Gemini profile when limits or session issues occur
+- switching to the next Antigravity profile when limits or session issues occur
 - selecting another provider/profile because of availability concerns
 
 ### Not Allowed In This Design
 
-- automatic failover from one Gemini consumer account to another
-- proactive round-robin across equivalent Gemini accounts
-- randomized routing across equivalent Gemini accounts
+- automatic failover from one Antigravity consumer account to another
+- proactive round-robin across equivalent Antigravity accounts
+- randomized routing across equivalent Antigravity accounts
 - background load balancing across consumer identities
 - any design whose purpose is to avoid per-profile restrictions by spreading load
 
@@ -239,13 +239,13 @@ This design solves all three:
 - all profiles can be authenticated ahead of time
 - context is always stored locally
 - switching carries context automatically
-- the only manual action left is saying "switch to Gemini-B"
+- the only manual action left is saying "switch to Antigravity-B"
 
 ## Role-Based Profile Model
 
 The preferred model is `role-based specialization`.
 
-Each Gemini profile should have:
+Each Antigravity profile should have:
 
 - a primary role
 - optional secondary capabilities
@@ -255,11 +255,11 @@ Each Gemini profile should have:
 Good examples:
 
 - `Codex` for planning and architecture
-- `Gemini-WSL` for Linux/WSL shell tasks, build issues, environment-sensitive debugging
-- `Gemini-Win` for Windows-native tasks, PowerShell, filesystem/path quirks, Windows tooling
-- `Gemini-Test` for running tests, triaging failures, summarizing regressions
-- `Gemini-Review` for patch review, edge cases, and risk analysis
-- `Gemini-Ops` for maintaining agent docs, scripts, aliases, setup, and local workflow support
+- `Antigravity-WSL` for Linux/WSL shell tasks, build issues, environment-sensitive debugging
+- `Antigravity-Win` for Windows-native tasks, PowerShell, filesystem/path quirks, Windows tooling
+- `Antigravity-Test` for running tests, triaging failures, summarizing regressions
+- `Antigravity-Review` for patch review, edge cases, and risk analysis
+- `Antigravity-Ops` for maintaining agent docs, scripts, aliases, setup, and local workflow support
 - future `Claude` profile for writing, refactoring review, or synthesis
 
 Minimal MVP profile set:
@@ -289,11 +289,11 @@ The better model is:
 
 Example:
 
-- `gemini-wsl`: primary `shell/debug`, secondary `implementation`
-- `gemini-win`: primary `windows/tooling`, secondary `implementation`
-- `gemini-test`: primary `tests`, secondary `bug triage`
-- `gemini-review`: primary `review`, secondary `tests`
-- `gemini-ops`: primary `docs/scripts/setup`, secondary `maintenance`
+- `agy-wsl`: primary `shell/debug`, secondary `implementation`
+- `agy-win`: primary `windows/tooling`, secondary `implementation`
+- `agy-test`: primary `tests`, secondary `bug triage`
+- `agy-review`: primary `review`, secondary `tests`
+- `agy-ops`: primary `docs/scripts/setup`, secondary `maintenance`
 
 This keeps the profiles useful without turning them into interchangeable worker slots.
 
@@ -314,8 +314,8 @@ If the accounts are equivalent and the point is to spread usage, random routing 
 
 So the design should avoid:
 
-- round-robin across equivalent Gemini consumer profiles
-- randomized selection across equivalent Gemini consumer profiles
+- round-robin across equivalent Antigravity consumer profiles
+- randomized selection across equivalent Antigravity consumer profiles
 - any scheduler that optimizes for spreading usage across identical consumer identities
 
 ## Existing Tools Worth Looking At
@@ -340,7 +340,7 @@ GitHub: `https://github.com/kbwo/ccmanager`
 Why it is relevant:
 
 - manages multiple AI coding assistant sessions
-- supports Codex CLI, Gemini CLI, Claude Code, and others
+- supports Codex CLI, Antigravity CLI, Claude Code, and others
 - built around multi-session workflows and worktrees
 
 Why it matters more than a simple switcher:
@@ -457,11 +457,11 @@ That is the key convenience feature you actually want.
 
 Before committing to the full orchestrator, verify:
 
-1. whether Gemini truly supports stable per-profile isolation in the way you intend
+1. whether Antigravity truly supports stable per-profile isolation in the way you intend
 2. whether Codex supports the same cleanly
 3. whether Windows native and WSL behave consistently
 4. where each CLI actually stores auth and config
-5. whether multiple pre-authenticated Gemini profiles can coexist without conflict
+5. whether multiple pre-authenticated Antigravity profiles can coexist without conflict
 
 If those checks fail, change the launcher model before building more.
 
@@ -469,7 +469,7 @@ Add a proof harness before full implementation:
 
 - inspect where each CLI actually stores config, auth, and chat/session state
 - launch isolated probes on Windows and WSL
-- verify whether two pre-authenticated Gemini profiles can coexist without corrupting each other
+- verify whether two pre-authenticated Antigravity profiles can coexist without corrupting each other
 - verify whether provider-native resume/checkpoint features can be used instead of custom hacks
 - fail closed if the launcher contract is not stable
 
@@ -477,24 +477,24 @@ Add a proof harness before full implementation:
 
 Build a local orchestrator that:
 
-- pre-authenticates multiple Gemini profiles
+- pre-authenticates multiple Antigravity profiles
 - keeps all context in project-local files
 - lets Codex remain the main planner
-- allows the user to say "switch to the next Gemini profile"
+- allows the user to say "switch to the next Antigravity profile"
 - automatically carries forward context without manual copy-paste
 
 Do not build:
 
 - automatic failover
-- round-robin across equivalent Gemini consumer accounts
-- randomized routing across equivalent Gemini consumer accounts
+- round-robin across equivalent Antigravity consumer accounts
+- randomized routing across equivalent Antigravity consumer accounts
 - proactive load balancing across consumer identities
 
 That gives you the workflow relief you actually care about while staying materially safer than a multi-account load balancer.
 
 ## Agent Charter Architecture
 
-If the system spans coding, writing, research, trading, and self-improvement, the right model is a small set of durable agent charters rather than a pool of equivalent Gemini profiles.
+If the system spans coding, writing, research, trading, and self-improvement, the right model is a small set of durable agent charters rather than a pool of equivalent Antigravity profiles.
 
 ### Recommended Agent Set
 
@@ -513,7 +513,7 @@ Responsibilities:
 - maintain handoff quality
 - keep task state coherent
 
-#### `gemini-builder`
+#### `agy-builder`
 
 Primary mission:
 
@@ -525,7 +525,7 @@ Secondary capabilities:
 - debugging
 - prototyping
 
-#### `gemini-systems`
+#### `agy-systems`
 
 Primary mission:
 
@@ -539,7 +539,7 @@ Secondary capabilities:
 - local automation
 - CI and developer tooling support
 
-#### `gemini-reviewer`
+#### `agy-reviewer`
 
 Primary mission:
 
@@ -553,7 +553,7 @@ Secondary capabilities:
 - test-gap analysis
 - patch review
 
-#### `gemini-writer`
+#### `agy-writer`
 
 Primary mission:
 
@@ -573,7 +573,7 @@ Important boundary:
 - useful for drafting and organizing legal material
 - not a substitute for legal advice
 
-#### `gemini-quant`
+#### `agy-quant`
 
 Primary mission:
 
@@ -592,7 +592,7 @@ Important boundary:
 - useful for research and analysis
 - should not be treated as autonomous trading authority
 
-#### `gemini-ops`
+#### `agy-ops`
 
 Primary mission:
 
@@ -607,7 +607,7 @@ Secondary capabilities:
 - monitor token and usage patterns
 - improve cross-repo workflows
 
-#### `gemini-recovery`
+#### `agy-recovery`
 
 Primary mission:
 
@@ -660,7 +660,7 @@ For improving the entire agent ecosystem across repositories and task types:
   usage/
 ```
 
-This global layer is where `gemini-ops` should work.
+This global layer is where `agy-ops` should work.
 
 Sensitive domains should not be copied into the global system layer by default.
 
@@ -670,7 +670,7 @@ Recovery mode is required.
 
 Problem:
 
-- a Gemini session may crash
+- a Antigravity session may crash
 - a terminal may be closed
 - the model may get stuck
 - partial progress may exist without a clean handoff
@@ -679,7 +679,7 @@ The orchestrator needs a recovery path that gets the system back on track withou
 
 There should also be a dedicated recovery specialist:
 
-- `gemini-recovery` for failure analysis and takeover support
+- `agy-recovery` for failure analysis and takeover support
 - `codex-chief` remains the final coordinator when recovery changes task direction
 
 ### Recovery Inputs
@@ -707,8 +707,8 @@ Recovery should reconstruct task state from:
    - uncertain work
    - blockers
    - next verification steps
-5. Assign `gemini-recovery` to diagnose the failure mode.
-6. If needed, assign a takeover specialist such as `gemini-builder`, `gemini-systems`, or `gemini-reviewer`.
+5. Assign `agy-recovery` to diagnose the failure mode.
+6. If needed, assign a takeover specialist such as `agy-builder`, `agy-systems`, or `agy-reviewer`.
 7. Regenerate `session.json` and `HANDOFF.md` from the recovered picture.
 8. Resume work in a new session.
 9. Record a postmortem so the system improves over time.
@@ -719,9 +719,9 @@ The orchestrator should support explicit takeover when one agent cannot continue
 
 Examples:
 
-- `gemini-builder` gets stuck, so `gemini-reviewer` or `gemini-systems` takes over
-- `gemini-test` crashes, so `gemini-builder` continues after reviewing failures
-- `gemini-writer` stalls, so `codex-chief` or another writing-capable profile resumes
+- `agy-builder` gets stuck, so `agy-reviewer` or `agy-systems` takes over
+- `agy-test` crashes, so `agy-builder` continues after reviewing failures
+- `agy-writer` stalls, so `codex-chief` or another writing-capable profile resumes
 
 Takeover should follow this pattern:
 
@@ -738,7 +738,7 @@ This avoids losing work just because a specific agent failed.
 
 Recovery should not only restore work. It should also explain failure.
 
-`gemini-recovery` should produce a structured diagnosis:
+`agy-recovery` should produce a structured diagnosis:
 
 - what was the agent trying to do
 - where it got stuck
@@ -780,10 +780,10 @@ Suggested contents:
 
 Recovery should feed a long-term improvement loop.
 
-`gemini-recovery` and `gemini-ops` should work together:
+`agy-recovery` and `agy-ops` should work together:
 
-- `gemini-recovery` explains the immediate failure
-- `gemini-ops` converts that into durable system improvements
+- `agy-recovery` explains the immediate failure
+- `agy-ops` converts that into durable system improvements
 
 Examples of improvements:
 
@@ -797,7 +797,7 @@ Examples of improvements:
 
 This makes the system more resilient over time instead of repeatedly failing in the same way.
 
-Global changes proposed by `gemini-recovery` or `gemini-ops` should require approval by `codex-chief` or the user before they change:
+Global changes proposed by `agy-recovery` or `agy-ops` should require approval by `codex-chief` or the user before they change:
 
 - routing rules
 - agent charters
@@ -865,13 +865,13 @@ Artifact ownership should be explicit.
 `RECOVERY.md`
 
 - owner: orchestrator
-- content proposed by: `gemini-recovery`
+- content proposed by: `agy-recovery`
 - role: recovery reconstruction and takeover guidance
 
 `postmortem.md`
 
-- owner: orchestrator or `gemini-ops`
-- content proposed by: `gemini-recovery`
+- owner: orchestrator or `agy-ops`
+- content proposed by: `agy-recovery`
 - role: durable learning after incidents
 
 Only approved conclusions should flow from postmortems into global system policy.
@@ -944,7 +944,7 @@ Command intent:
 
 - snapshot crash evidence
 - reconstruct state from filesystem and process artifacts
-- assign `gemini-recovery` for diagnosis
+- assign `agy-recovery` for diagnosis
 - prefer verified filesystem and git facts over narrative summaries
 
 `orch takeover --profile <name>`
@@ -959,7 +959,7 @@ Command intent:
 
 - record root cause
 - store durable lessons
-- create follow-up work for `gemini-ops`
+- create follow-up work for `agy-ops`
 - require approval before modifying global policy or automation
 
 ### Recovery Artifacts
@@ -1005,19 +1005,19 @@ When another agent takes over:
 - may update planning and routing artifacts
 - should not directly overwrite canonical recovery evidence without reason
 
-`gemini-recovery`
+`agy-recovery`
 
 - may update `RECOVERY.md`
 - may classify failure cause
 - may propose postmortem content
 - should not silently resume unrelated implementation work
 
-`gemini-ops`
+`agy-ops`
 
 - may update global charters, prompts, scripts, and workflow improvements
 - may convert incidents into durable system changes
 
-takeover specialist such as `gemini-builder`, `gemini-systems`, or `gemini-reviewer`
+takeover specialist such as `agy-builder`, `agy-systems`, or `agy-reviewer`
 
 - may resume task work after recovery artifacts are accepted
 - should not rewrite recovery history
@@ -1049,9 +1049,9 @@ The orchestrator should allow per-task retention settings.
 
 Use official provider features when they reduce custom complexity.
 
-For Gemini CLI, the adapter should evaluate official features such as:
+For Antigravity CLI, the adapter should evaluate official features such as:
 
-- `GEMINI.md`
+- `.antigravity.md`
 - `/chat save`
 - `/chat resume`
 - `/chat share`
