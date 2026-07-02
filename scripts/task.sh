@@ -39,7 +39,7 @@ case $ACTION in
             echo "Creating new worktree at $TASK_DIR from $CURRENT_BRANCH..."
             git worktree add -b "$BRANCH_NAME" "$TASK_DIR" "$CURRENT_BRANCH"
         fi
-        update_board "In Progress" "Gemini-CLI"
+        update_board "In Progress" "Antigravity-CLI"
         echo "✅ Task initialized. Please 'cd $TASK_DIR' to begin."
         ;;
         

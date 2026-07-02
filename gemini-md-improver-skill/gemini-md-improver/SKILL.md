@@ -1,11 +1,11 @@
 ---
-name: gemini-md-improver
-description: Audits and improves project instruction files (GEMINI.md) to ensure optimal AI context and execution accuracy. Use when project instructions are stale, missing key workflows, or lack actionable technical standards.
+name: agy-md-improver
+description: Audits and improves project instruction files (.antigravity.md) to ensure optimal AI context and execution accuracy. Use when project instructions are stale, missing key workflows, or lack actionable technical standards.
 ---
 
-# Gemini MD Improver
+# Antigravity MD Improver
 
-This skill evaluates and hardens project instruction files (`GEMINI.md`) to maintain high-signal context for AI agents.
+This skill evaluates and hardens project instruction files (`.antigravity.md`) to maintain high-signal context for AI agents.
 
 ## Core Mandates
 
@@ -18,8 +18,8 @@ This skill evaluates and hardens project instruction files (`GEMINI.md`) to main
 
 ### 1. Discovery
 Search for all instruction files in the repository:
-- Root `./GEMINI.md`
-- Subdirectory `./src/**/GEMINI.md`
+- Root `./.antigravity.md`
+- Subdirectory `./src/**/.antigravity.md`
 - Context files like `README.md` or `CONTRIBUTING.md` that contain workflows.
 
 ### 2. Quality Audit
@@ -35,7 +35,7 @@ Evaluate files against these criteria:
 - **F (<60)**: Missing, generic, or wildly inaccurate.
 
 ### 3. Reporting
-Output a `GEMINI.md Quality Report`:
+Output a `.antigravity.md Quality Report`:
 - **File**: [Path]
 - **Score**: [0-100]
 - **Findings**: [List specific gaps found via codebase search]

@@ -40,7 +40,7 @@ AtmanVessel is a deterministic orchestration framework that treats AI models as 
 
 ## 4. Operational "YOLO" Mode
 All agent launches must be **Non-Interactive** and **Autonomous**.
-- **Env Var**: `GEMINI_CLI_TRUST_WORKSPACE=true` is required for all automated operations.
+- **Env Var**: `Antigravity autonomous mode=true` is required for all automated operations.
 - **Global Command**: Use `orch` (installed to `~/.local/bin/orch`) for all operations.
 - **Timeout**: All autonomous operations have a **strict 60-second timeout**. Agents must checkpoint state frequently.
 
@@ -48,5 +48,5 @@ All agent launches must be **Non-Interactive** and **Autonomous**.
 
 ## 5. Multi-Account Identity
 To rotate identities and bypass rate limits, use the named fleet:
-1. `orch launch --profile <name> gemini -- -p "..."`
+1. `orch launch --profile <name> agy -- -p "..."`
 2. Authenticated Profiles: `gayatri`, `gvklive`, `hilarioushabit`, `hollowhistory`, `hypnotichallway`, `mistakenWizard`.
