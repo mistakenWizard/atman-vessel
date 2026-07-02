@@ -1,7 +1,7 @@
 # Multi-Agent Orchestration Framework v2.1: Identity Isolation Model
 
 ## 1. Executive Summary
-This framework manages **five (5) Gemini CLI accounts** and **one (1) Codex CLI account** by isolating each identity at the process level and externalizing task state into a project-local "Soul" (Context). This eliminates authentication collisions and prevents context amnesia during account rotation.
+This framework manages **five (5) Antigravity CLI accounts** and **one (1) Codex CLI account** by isolating each identity at the process level and externalizing task state into a project-local "Soul" (Context). This eliminates authentication collisions and prevents context amnesia during account rotation.
 
 ---
 
@@ -12,7 +12,7 @@ Instead of swapping shared config folders, each account is launched in an isolat
 Add this to your `$PROFILE` or a dedicated `scripts/launch-identity.ps1`:
 
 ```powershell
-function Launch-Gemini($Id) {
+function Launch-Antigravity($Id) {
     $ProfilePath = "C:\Users\ganes\.gemini_profiles\acc_$Id"
     if (!(Test-Path $ProfilePath)) { New-Item -ItemType Directory -Path $ProfilePath -Force }
     
@@ -22,7 +22,7 @@ function Launch-Gemini($Id) {
     $env:LOCALAPPDATA = "$ProfilePath\AppData\Local"
     $env:APPDATA = "$ProfilePath\AppData\Roaming"
     
-    Write-Host "🚀 Launching Gemini Identity #$Id..." -ForegroundColor Cyan
+    Write-Host "🚀 Launching Antigravity Identity #$Id..." -ForegroundColor Cyan
     # Start a new isolated shell or run a command
     powershell.exe -NoExit
 }
@@ -33,7 +33,7 @@ function Launch-Gemini($Id) {
 launch_gemini() {
     export HOME="$HOME/.gemini_profiles/acc_$1"
     mkdir -p "$HOME"
-    echo "🚀 Launching Gemini Identity #$1..."
+    echo "🚀 Launching Antigravity Identity #$1..."
     bash
 }
 ```
@@ -41,13 +41,13 @@ launch_gemini() {
 ---
 
 ## 3. The "Soul": Structured Context (HANDOFF.md)
-The source of truth for the task is a project-local `HANDOFF.md`. This file is the "Mental Map" that allows a new Gemini account to "rehydrate" its intuition instantly.
+The source of truth for the task is a project-local `HANDOFF.md`. This file is the "Mental Map" that allows a new Antigravity account to "rehydrate" its intuition instantly.
 
 ### 3.1 Schema Definition
 ```markdown
 # CURRENT TASK: [Short Name]
 **Status:** [In-Progress | Blocked | Awaiting Review]
-**Active Identity:** [Gemini-Acc-N]
+**Active Identity:** [Antigravity-Acc-N]
 
 ## 1. Mental Map (Context)
 - **Files in Focus:** List paths currently being modified.
@@ -72,8 +72,8 @@ The source of truth for the task is a project-local `HANDOFF.md`. This file is t
 Use Codex as the "Control Tower." Codex manages the `HANDOFF.md`.
 *   **Action:** Codex analyzes the task and writes the initial `HANDOFF.md`.
 
-### Step 2: Execution (Gemini - Identity N)
-*   **Action:** Launch a terminal using `Launch-Gemini $N`.
+### Step 2: Execution (Antigravity - Identity N)
+*   **Action:** Launch a terminal using `Launch-Antigravity $N`.
 *   **Bootup:** Paste: *"Context: Read `HANDOFF.md`. Resume from 'Next Atomic Steps'. Ignore session history."*
 
 ### Step 3: Rotation (Limit Hit)
