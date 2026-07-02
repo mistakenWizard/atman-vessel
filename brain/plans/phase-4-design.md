@@ -10,7 +10,7 @@
 ### 2.1 Profile Bootstrapping
 - **Function**: `bootstrap_profile(profile_path: &Path) -> Result<()>`
 - **Logic**:
-    1. Identify base Gemini config (e.g., `~/.gemini`).
+    1. Identify base Antigravity config (e.g., `~/.agy`).
     2. Check if target profile directory exists; create if not.
     3. Copy the five mandatory auth files identified in Phase 1.5:
         - `google_accounts.json`
