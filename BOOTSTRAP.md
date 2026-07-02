@@ -15,13 +15,13 @@ AtmanVessel maintains a persistent state in `.orchestrator/session.json`.
 - **DO** use `orch freeze -m "..."` to checkpoint your mental map before finishing a turn.
 
 ## 3. Tool Access (MCP)
-If you are running via Gemini or Codex, the `atman-vessel` MCP server is already registered. You have access to:
+If you are running via Antigravity or Codex, the `atman-vessel` MCP server is already registered. You have access to:
 - `start_task`: To spawn specialist sub-agents.
 - `switch_profile`: To rotate identities and bypass rate limits.
 - `freeze_session`: To persist critical findings.
 
 ## 4. Operational Mandates
-- **Autonomy**: Always set `export GEMINI_CLI_TRUST_WORKSPACE=true`.
+- **Autonomy**: Always set `export Antigravity autonomous mode=true`.
 - **Isolation**: Always work inside the worktree path provided by `orch task start`.
 - **Provenance**: Use `orch verify` to promote your findings.
 

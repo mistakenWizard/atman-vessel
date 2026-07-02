@@ -12,7 +12,7 @@ ln -sf $(pwd)/orch.sh ~/.local/bin/orch
 Manage the "Souls" (authenticated identities) of your fleet.
 
 - `orch profiles list`: View all authenticated profiles.
-- `orch launch --profile <name> --interactive gemini -- "test"`: Authenticate a new profile via Google OAuth.
+- `orch launch --profile <name> --interactive agy -- "test"`: Authenticate a new profile via Google OAuth.
 
 ## 3. Task Orchestration
 The primary workflow for agentic development.

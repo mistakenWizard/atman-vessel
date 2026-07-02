@@ -6,8 +6,8 @@ Validate the physical assumptions required by the orchestrator before building t
 
 The probe harness must answer:
 
-- whether Gemini profile isolation is stable enough to use
-- whether Codex/Gemini config and auth roots can be identified safely
+- whether Antigravity profile isolation is stable enough to use
+- whether Codex/Antigravity config and auth roots can be identified safely
 - whether Windows and WSL behave differently
 - whether lock recovery can detect dead sessions
 - whether multi-terminal sessions can detect stale context
@@ -41,7 +41,7 @@ Validate for each provider/profile:
 - whether `HOME` redirection works
 - whether profile state leaks across profiles
 
-Required Gemini checks:
+Required Antigravity checks:
 
 - launch profile A
 - authenticate normally if needed
@@ -171,7 +171,7 @@ No auth secrets should be written into probe outputs.
 Phase 1 is successful if:
 
 - provider paths are identified without leaking secrets
-- Gemini profile isolation is proven or rejected
+- Antigravity profile isolation is proven or rejected
 - Windows vs WSL differences are documented
 - stale lock behavior is defined from real process behavior
 - schema write-safety is validated
@@ -182,7 +182,7 @@ Phase 1 is successful if:
 
 Phase 1 should block full implementation if:
 
-- profile isolation leaks identity across Gemini profiles
+- profile isolation leaks identity across Antigravity profiles
 - CLI auth files cannot be isolated safely
 - HOME redirection corrupts provider state
 - stale locks cannot be detected reliably
