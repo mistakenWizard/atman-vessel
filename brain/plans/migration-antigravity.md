@@ -6,15 +6,25 @@ Google is transitioning Antigravity CLI to the Go-based **Antigravity CLI** on t
 **Deadline:** June 18, 2026 (Consumer services for Pro/Ultra/Free end).
 
 ## 1. Core Platform Changes
-| Feature | Antigravity CLI (Old) | Antigravity CLI (New) |
+| Feature | Gemini CLI (Old) | Antigravity CLI (New) |
 | :--- | :--- | :--- |
-| **Binary** | `agy` | `agy` (Antigravity CLI) |
-| **Global Config** | `~/.agy/` | `~/.agy/antigravity-cli/` |
-| **Workspace Context** | `.antigravity.md` | `.antigravity.md` |
-| **Skills Directory** | `.agy/skills/` | `.agents/skills/` |
+| **Binary** | `gemini` | `agy` (Antigravity CLI) |
+| **Global Config** | `~/.gemini/` | `~/.gemini/antigravity-cli/` |
+| **Workspace Context** | `GEMINI.md` | `.antigravity.md` |
+| **Skills Directory** | `.gemini/skills/` | `.agents/skills/` |
 | **MCP Config** | `settings.json` | `mcp_config.json` |
 | **Extensions** | Extensions | Plugins |
-| **Trust Mode** | `Antigravity autonomous mode` | Managed via `settings.json` / `/permissions` |
+| **Trust Mode** | `GEMINI_CLI_TRUST_WORKSPACE` | Managed via `settings.json` / `/permissions` |
+
+## 2. Authentication Compatibility (CRITICAL)
+**Finding:** Gemini CLI authentication JSON files (`oauth_creds.json`, `google_accounts.json`) are **NOT** compatible with Antigravity CLI.
+
+**Technical Reasons:**
+- **OAuth Client ID Change:** Antigravity CLI uses a new Client ID (`1071006060591-...`). Tokens issued for Gemini CLI are rejected by the Antigravity backend.
+- **Protocol Shift:** The transition from Node.js to Go introduced changes in how tokens are cached and encrypted.
+- **Config Path:** Antigravity requires credentials to be located in the `antigravity-cli/` subdirectory.
+
+**Action Required:** Every profile must be re-authenticated manually using the `--interactive` flag.
 
 ## 2. Orchestrator Implementation (Rust)
 ### 2.1. CLI Invocation
